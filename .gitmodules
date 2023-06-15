@@ -1,0 +1,4 @@
+[submodule "deps/libmediasoupclient"]
+	path = deps/libmediasoupclient
+	url = https://github.com/versatica/libmediasoupclient
+	branch = m112
