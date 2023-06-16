@@ -6,6 +6,25 @@ fn main() {
     println!("cargo:rustc-link-lib=webrtc");
     println!("cargo:rustc-link-lib=mediasoupclient-native");
     println!("cargo:rerun-if-changed=./src/lib.h");
+    println!("cargo:rerun-if-changed=./src/lib.cc");
+
+    // Don't build if "cargo doc" is being run. This is to support docs.rs.
+    let is_cargo_doc = env::var_os("DOCS_RS").is_some();
+
+    // Don't build if the rust language server (RLS) is running.
+    let is_rls = env::var_os("CARGO")
+        .map(PathBuf::from)
+        .as_ref()
+        .and_then(|p| p.file_stem())
+        .and_then(|f| f.to_str())
+        .map(|s| s.starts_with("rls"))
+        .unwrap_or(false);
+
+    // Early exit
+    if is_cargo_doc || is_rls {
+        build_bindgen();
+        return;
+    }
 
     cc::Build::new()
         .cpp(true)
@@ -42,6 +61,10 @@ fn main() {
         ])
         .compile("mediasoupclient-native");
 
+    build_bindgen();
+}
+
+fn build_bindgen() {
     let bindings = bindgen::Builder::default()
         .header("src/lib.h")
         .clang_arg("-DGEN_BINDINGS")
