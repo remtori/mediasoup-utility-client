@@ -16,7 +16,8 @@ set_source_files_properties(${SOURCE_FILES}
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
-    src/main.cpp
+    src/lib.h
+    src/lib.cpp
 )
 
 add_subdirectory(
@@ -28,6 +29,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     deps/libmediasoupclient/deps/libsdptransform/include
     deps/webrtc/include
     deps/webrtc/include/third_party/abseil-cpp
+    deps/webrtc/include/third_party/libyuv/include
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
