@@ -73,34 +73,31 @@ EXPORT bool msc_is_loaded(MscDevice*);
 EXPORT bool msc_load(MscDevice*, const char* router_rtp_capabilities);
 EXPORT bool msc_can_produce(MscDevice*, MscMediaKind kind);
 
-typedef void (*OnConnect)(MscDevice*, MscTransport*, const char* dtls_parameters);
-typedef void (*OnConnectionStateChange)(MscDevice*, MscTransport*, const char* connection_state);
-typedef void (*OnProduce)(MscDevice*, MscTransport*, int64_t promise_id, MscMediaKind kind, const char* rtp_parameters);
-typedef void (*OnSendTransportClose)(MscDevice*, MscTransport*, MscProducer*);
-typedef void (*OnRecvTransportClose)(MscDevice*, MscTransport*, MscConsumer*);
+typedef void (*OnConnect)(::MscTransport* transport, void* user_ptr, const char* dtls_parameters);
+typedef void (*OnConnectionStateChange)(::MscTransport* transport, void* user_ptr, const char* connection_state);
+typedef void (*OnProduce)(::MscTransport* transport, void* user_ptr, int64_t promise_id, MscMediaKind kind, const char* rtp_parameters);
 
+EXPORT void msc_set_user_ptr(MscDevice*, void*);
 EXPORT void msc_set_on_connect_handler(MscDevice*, OnConnect handler);
 EXPORT void msc_set_on_connection_state_change_handler(MscDevice*, OnConnectionStateChange handler);
 EXPORT void msc_set_on_produce_handler(MscDevice*, OnProduce handler);
-EXPORT void msc_set_on_send_transport_close_handler(MscDevice*, OnSendTransportClose handler);
-EXPORT void msc_set_on_recv_transport_close_handler(MscDevice*, OnRecvTransportClose handler);
 
 EXPORT void msc_fulfill_producer_id(MscDevice*, int64_t promise_id, const char* producer_id);
 
 EXPORT MscTransport* msc_create_send_transport(
-        MscDevice*,
-        const char* id,
-        const char* ice_parameters,
-        const char* ice_candidates,
-        const char* dtls_parameters
+	MscDevice*,
+	const char* id,
+	const char* ice_parameters,
+	const char* ice_candidates,
+	const char* dtls_parameters
 );
 
 EXPORT MscTransport* msc_create_recv_transport(
-        MscDevice*,
-        const char* id,
-        const char* ice_parameters,
-        const char* ice_candidates,
-        const char* dtls_parameters
+	MscDevice*,
+	const char* id,
+	const char* ice_parameters,
+	const char* ice_candidates,
+	const char* dtls_parameters
 );
 
 EXPORT MscProducer* msc_create_producer(MscDevice*, MscTransport*, int encoding_layers, const char* codec_options, const char* codec);
@@ -112,10 +109,10 @@ EXPORT MscConsumer* msc_create_consumer(MscDevice*, MscTransport*, const char* i
 typedef void (*OnVideoFrame)(MscVideoFrame);
 typedef void (*OnAudioData)(MscAudioData);
 
-EXPORT MscConsumerSink* msc_add_video_sink(MscDevice*, MscConsumer*, OnVideoFrame);
-EXPORT MscConsumerSink* msc_add_audio_sink(MscDevice*, MscConsumer*, OnAudioData);
-EXPORT void msc_remove_video_sink(MscDevice*, MscConsumer*, MscConsumerSink*);
-EXPORT void msc_remove_audio_sink(MscDevice*, MscConsumer*, MscConsumerSink*);
+EXPORT MscConsumerSink* msc_add_video_sink(MscConsumer*, OnVideoFrame);
+EXPORT MscConsumerSink* msc_add_audio_sink(MscConsumer*, OnAudioData);
+EXPORT void msc_remove_video_sink(MscConsumer*, MscConsumerSink*);
+EXPORT void msc_remove_audio_sink(MscConsumer*, MscConsumerSink*);
 
 #ifdef __cplusplus
 };
