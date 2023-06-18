@@ -54,8 +54,8 @@ std::future<void> Device::OnConnect(mediasoupclient::Transport* transport, const
     if (on_connect_handler) {
         auto str = dtlsParameters.dump();
         on_connect_handler(
-            reinterpret_cast<::Device*>(this),
-            reinterpret_cast<::Transport*>(transport),
+            reinterpret_cast<::MscDevice*>(this),
+            reinterpret_cast<::MscTransport*>(transport),
             str.c_str()
         );
     }
@@ -67,8 +67,8 @@ void Device::OnConnectionStateChange(mediasoupclient::Transport* transport, cons
 {
     if (on_connection_state_change_handler) {
         on_connection_state_change_handler(
-            reinterpret_cast<::Device*>(this),
-            reinterpret_cast<::Transport*>(transport),
+            reinterpret_cast<::MscDevice*>(this),
+            reinterpret_cast<::MscTransport*>(transport),
             connectionState.c_str()
         );
     }
@@ -84,10 +84,10 @@ std::future<std::string> Device::OnProduce(mediasoupclient::SendTransport* trans
 
         auto str = rtpParameters.dump();
         on_produce_handler(
-            reinterpret_cast<::Device*>(this),
-            reinterpret_cast<::Transport*>(transport),
+            reinterpret_cast<::MscDevice*>(this),
+            reinterpret_cast<::MscTransport*>(transport),
             promise_id,
-            kind == "audio" ? ::MediaKind::Audio : ::MediaKind::Video,
+            kind == "audio" ? ::MscMediaKind::Audio : ::MscMediaKind::Video,
             str.c_str());
 
         return future;
@@ -108,9 +108,9 @@ void Device::OnTransportClose(mediasoupclient::Producer* producer)
 {
     if (on_send_transport_close_handler) {
         on_send_transport_close_handler(
-            reinterpret_cast<::Device*>(this),
-            reinterpret_cast<::Transport*>(send_transport.get()),
-            reinterpret_cast<::Producer*>(producer)
+            reinterpret_cast<::MscDevice*>(this),
+            reinterpret_cast<::MscTransport*>(send_transport.get()),
+            reinterpret_cast<::MscProducer*>(producer)
         );
     }
 }
@@ -119,9 +119,9 @@ void Device::OnTransportClose(mediasoupclient::Consumer* consumer)
 {
     if (on_recv_transport_close_handler) {
         on_recv_transport_close_handler(
-            reinterpret_cast<::Device*>(this),
-            reinterpret_cast<::Transport*>(recv_transport.get()),
-            reinterpret_cast<::Consumer*>(consumer)
+            reinterpret_cast<::MscDevice*>(this),
+            reinterpret_cast<::MscTransport*>(recv_transport.get()),
+            reinterpret_cast<::MscConsumer*>(consumer)
         );
     }
 }
@@ -145,7 +145,7 @@ public:
         if (!m_on_audio_data)
             return;
 
-        ::AudioData audio_data {
+        ::MscAudioData audio_data {
             .data = data,
             .bits_per_sample = bits_per_sample,
             .sample_rate = sample_rate,
@@ -182,7 +182,7 @@ public:
             m_data.data(), 0, frame.width(), frame.height(),
             libyuv::FOURCC_ABGR);
 
-        ::VideoFrame video_frame {
+        ::MscVideoFrame video_frame {
             .data = m_data.data(),
             .width = frame.width(),
             .height = frame.height(),
@@ -196,8 +196,16 @@ private:
     std::vector<uint8_t> m_data {};
 };
 
-class AudioProducer : public webrtc::AudioTrackInterface
+class AudioProducer : public webrtc::AudioSourceInterface
 {
+public:
+private:
+};
+
+class VideoProducer : public webrtc::VideoTrackSourceInterface
+{
+public:
+private:
 };
 
 }
@@ -211,51 +219,51 @@ static const char* alloc_string(const std::string& str)
 
 extern "C" {
 
-void free_string(const char* str)
+void msc_free_string(const char* str)
 {
     delete[] str;
 }
 
-void initialize()
+void msc_initialize()
 {
     rtc::InitializeSSL();
     rtc::InitRandom(static_cast<int>(rtc::TimeMillis()));
 }
 
-void cleanup()
+void msc_cleanup()
 {
     rtc::CleanupSSL();
 }
 
-const char* version()
+const char* msc_version()
 {
     return alloc_string(mediasoupclient::Version());
 }
 
-Device* alloc_device()
+MscDevice* msc_alloc_device()
 {
     auto device = new (std::nothrow) impl::Device();
-    return reinterpret_cast<Device*>(device);
+    return reinterpret_cast<MscDevice*>(device);
 }
 
-void free_device(Device* device)
+void msc_free_device(MscDevice* device)
 {
     delete reinterpret_cast<impl::Device*>(device);
 }
 
-const char* get_rtp_capabilities(Device* in_device)
+const char* msc_get_rtp_capabilities(MscDevice* in_device)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     return alloc_string(device->device.GetRtpCapabilities());
 }
 
-bool is_loaded(Device* in_device)
+bool msc_is_loaded(MscDevice* in_device)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     return device->device.IsLoaded();
 }
 
-bool load(Device* in_device, const char* router_rtp_capabilities)
+bool msc_load(MscDevice* in_device, const char* router_rtp_capabilities)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     try {
@@ -266,55 +274,55 @@ bool load(Device* in_device, const char* router_rtp_capabilities)
     }
 }
 
-bool can_produce(Device* in_device, MediaKind kind)
+bool msc_can_produce(MscDevice* in_device, MscMediaKind kind)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
-    return device->device.CanProduce(kind == MediaKind::Audio ? "audio" : "video");
+    return device->device.CanProduce(kind == MscMediaKind::Audio ? "audio" : "video");
 }
 
-void set_on_connect_handler(Device* in_device, OnConnect handler)
+void msc_set_on_connect_handler(MscDevice* in_device, OnConnect handler)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_connect_handler = handler;
 }
 
-void set_on_connection_state_change_handler(Device* in_device, OnConnectionStateChange handler)
+void msc_set_on_connection_state_change_handler(MscDevice* in_device, OnConnectionStateChange handler)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_connection_state_change_handler = handler;
 }
 
-void set_on_produce_handler(Device* in_device, OnProduce handler)
+void msc_set_on_produce_handler(MscDevice* in_device, OnProduce handler)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_produce_handler = handler;
 }
 
-void set_on_send_transport_close_handler(Device* in_device, OnSendTransportClose handler)
+void msc_set_on_send_transport_close_handler(MscDevice* in_device, OnSendTransportClose handler)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_send_transport_close_handler = handler;
 }
 
-void set_on_recv_transport_close_handler(Device* in_device, OnRecvTransportClose handler)
+void msc_set_on_recv_transport_close_handler(MscDevice* in_device, OnRecvTransportClose handler)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_recv_transport_close_handler = handler;
 }
 
-void fulfill_producer_id(Device* in_device, int64_t promise_id, const char* producer_id)
+void msc_fulfill_producer_id(MscDevice* in_device, int64_t promise_id, const char* producer_id)
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->fulfill_producer_id(promise_id, producer_id);
 }
 
 
-Transport* create_send_transport(
-    Device* in_device,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters
+MscTransport* msc_create_send_transport(
+        MscDevice* in_device,
+        const char* id,
+        const char* ice_parameters,
+        const char* ice_candidates,
+        const char* dtls_parameters
 )
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
@@ -332,15 +340,15 @@ Transport* create_send_transport(
             &options)
     );
 
-    return reinterpret_cast<::Transport*>(device->send_transport.get());
+    return reinterpret_cast<::MscTransport*>(device->send_transport.get());
 }
 
-Transport* create_recv_transport(
-    Device* in_device,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters
+MscTransport* msc_create_recv_transport(
+        MscDevice* in_device,
+        const char* id,
+        const char* ice_parameters,
+        const char* ice_candidates,
+        const char* dtls_parameters
 )
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
@@ -358,15 +366,15 @@ Transport* create_recv_transport(
             &options)
     );
 
-    return reinterpret_cast<::Transport*>(device->send_transport.get());
+    return reinterpret_cast<::MscTransport*>(device->send_transport.get());
 }
 
-Producer* create_producer(
-    Device* in_device,
-    Transport* in_transport,
-    int encoding_layers,
-    const char* codec_options,
-    const char* codec
+MscProducer* msc_create_producer(
+        MscDevice* in_device,
+        MscTransport* in_transport,
+        int encoding_layers,
+        const char* codec_options,
+        const char* codec
 )
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
@@ -397,23 +405,23 @@ Producer* create_producer(
 //    };
 }
 
-void supply_video(Device*, Producer*, VideoFrame)
+void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame)
 {
     // TODO
 }
 
-void supply_audio(Device*, Producer*, AudioData)
+void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData)
 {
     // TODO
 }
 
-Consumer* create_consumer(
-    Device* in_device,
-    Transport* in_transport,
-    const char* id,
-    const char* producer_id,
-    MediaKind kind,
-    const char* rtp_parameters
+MscConsumer* msc_create_consumer(
+        MscDevice* in_device,
+        MscTransport* in_transport,
+        const char* id,
+        const char* producer_id,
+        MscMediaKind kind,
+        const char* rtp_parameters
 )
 {
     auto* device = reinterpret_cast<impl::Device*>(in_device);
@@ -425,33 +433,33 @@ Consumer* create_consumer(
         device,
         id,
         producer_id,
-        kind == MediaKind::Audio ? "audio" : "video",
+        kind == MscMediaKind::Audio ? "audio" : "video",
         &parsed_rtp_parameters);
 
-    return reinterpret_cast<Consumer*>(consumer);
+    return reinterpret_cast<MscConsumer*>(consumer);
 }
 
-ConsumerSink* add_video_sink(Device*, Consumer* in_consumer, OnVideoFrame on_video_frame)
+MscConsumerSink* msc_add_video_sink(MscDevice*, MscConsumer* in_consumer, OnVideoFrame on_video_frame)
 {
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
 
     auto* sink = new impl::VideoConsumer(on_video_frame);
     dynamic_cast<webrtc::VideoTrackInterface*>(consumer->GetTrack())->AddOrUpdateSink(sink, {});
 
-    return reinterpret_cast<ConsumerSink*>(sink);
+    return reinterpret_cast<MscConsumerSink*>(sink);
 }
 
-ConsumerSink* add_audio_sink(Device*, Consumer* in_consumer, OnAudioData on_audio_data)
+MscConsumerSink* msc_add_audio_sink(MscDevice*, MscConsumer* in_consumer, OnAudioData on_audio_data)
 {
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
 
     auto* sink = new impl::AudioConsumer(on_audio_data);
     dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->AddSink(sink);
 
-    return reinterpret_cast<ConsumerSink*>(sink);
+    return reinterpret_cast<MscConsumerSink*>(sink);
 }
 
-void remove_video_sink(Device*, Consumer* in_consumer, ConsumerSink* in_sink)
+void msc_remove_video_sink(MscDevice*, MscConsumer* in_consumer, MscConsumerSink* in_sink)
 {
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
     auto* sink = reinterpret_cast<impl::VideoConsumer*>(in_sink);
@@ -460,7 +468,7 @@ void remove_video_sink(Device*, Consumer* in_consumer, ConsumerSink* in_sink)
     delete sink;
 }
 
-void remove_audio_sink(Device*, Consumer* in_consumer, ConsumerSink* in_sink)
+void msc_remove_audio_sink(MscDevice*, MscConsumer* in_consumer, MscConsumerSink* in_sink)
 {
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
     auto* sink = reinterpret_cast<impl::AudioConsumer*>(in_sink);

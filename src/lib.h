@@ -2,8 +2,10 @@
 
 #ifdef GEN_BINDINGS
 #include <stdbool.h>
+#define EXPORT
 #else
 #include <stdint.h>
+#define EXPORT __attribute__((visibility("default")))
 #endif
 
 #ifdef __cplusplus
@@ -15,105 +17,105 @@ typedef unsigned char uint8_t;
 typedef unsigned long long int64_t;
 #endif
 
-typedef enum MediaKind {
+typedef enum MscMediaKind {
     Audio = 0,
     Video = 1,
-} MediaKind;
+} MscMediaKind;
 
-typedef struct Device {
+typedef struct MscDevice {
     uint8_t _address;
-} Device;
+} MscDevice;
 
-typedef struct Transport {
+typedef struct MscTransport {
     uint8_t _address;
-} Transport;
+} MscTransport;
 
-typedef struct Producer {
+typedef struct MscProducer {
     void* producer;
     void* source;
-} Producer;
+} MscProducer;
 
-typedef struct Consumer {
+typedef struct MscConsumer {
     uint8_t _address;
-} Consumer;
+} MscConsumer;
 
-typedef struct ConsumerSink {
+typedef struct MscConsumerSink {
     uint8_t _address;
-} ConsumerSink;
+} MscConsumerSink;
 
-typedef struct VideoFrame {
+typedef struct MscVideoFrame {
     uint8_t* data;
     int width;
     int height;
     int64_t timestamp;
-} VideoFrame;
+} MscVideoFrame;
 
-typedef struct AudioData {
+typedef struct MscAudioData {
     const void* data;
     int bits_per_sample;
     int sample_rate;
     int number_of_channels;
     int number_of_frames;
     int64_t absolute_capture_timestamp_ms;
-} AudioData;
+} MscAudioData;
 
-void initialize();
-void cleanup();
+EXPORT void msc_initialize();
+EXPORT void msc_cleanup();
 
-const char* version();
-void free_string(const char*);
+EXPORT const char* msc_version();
+EXPORT void msc_free_string(const char*);
 
-Device* alloc_device();
-void free_device(Device*);
+EXPORT MscDevice* msc_alloc_device();
+EXPORT void msc_free_device(MscDevice*);
 
-const char* get_rtp_capabilities(Device*);
-bool is_loaded(Device*);
-bool load(Device*, const char* router_rtp_capabilities);
-bool can_produce(Device*, MediaKind kind);
+EXPORT const char* msc_get_rtp_capabilities(MscDevice*);
+EXPORT bool msc_is_loaded(MscDevice*);
+EXPORT bool msc_load(MscDevice*, const char* router_rtp_capabilities);
+EXPORT bool msc_can_produce(MscDevice*, MscMediaKind kind);
 
-typedef void (*OnConnect)(Device*, Transport*, const char* dtls_parameters);
-typedef void (*OnConnectionStateChange)(Device*, Transport*, const char* connection_state);
-typedef void (*OnProduce)(Device*, Transport*, int64_t promise_id, MediaKind kind, const char* rtp_parameters);
-typedef void (*OnSendTransportClose)(Device*, Transport*, Producer*);
-typedef void (*OnRecvTransportClose)(Device*, Transport*, Consumer*);
+typedef void (*OnConnect)(MscDevice*, MscTransport*, const char* dtls_parameters);
+typedef void (*OnConnectionStateChange)(MscDevice*, MscTransport*, const char* connection_state);
+typedef void (*OnProduce)(MscDevice*, MscTransport*, int64_t promise_id, MscMediaKind kind, const char* rtp_parameters);
+typedef void (*OnSendTransportClose)(MscDevice*, MscTransport*, MscProducer*);
+typedef void (*OnRecvTransportClose)(MscDevice*, MscTransport*, MscConsumer*);
 
-void set_on_connect_handler(Device*, OnConnect handler);
-void set_on_connection_state_change_handler(Device*, OnConnectionStateChange handler);
-void set_on_produce_handler(Device*, OnProduce handler);
-void set_on_send_transport_close_handler(Device*, OnSendTransportClose handler);
-void set_on_recv_transport_close_handler(Device*, OnRecvTransportClose handler);
+EXPORT void msc_set_on_connect_handler(MscDevice*, OnConnect handler);
+EXPORT void msc_set_on_connection_state_change_handler(MscDevice*, OnConnectionStateChange handler);
+EXPORT void msc_set_on_produce_handler(MscDevice*, OnProduce handler);
+EXPORT void msc_set_on_send_transport_close_handler(MscDevice*, OnSendTransportClose handler);
+EXPORT void msc_set_on_recv_transport_close_handler(MscDevice*, OnRecvTransportClose handler);
 
-void fulfill_producer_id(Device*, int64_t promise_id, const char* producer_id);
+EXPORT void msc_fulfill_producer_id(MscDevice*, int64_t promise_id, const char* producer_id);
 
-Transport* create_send_transport(
-    Device*,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters
+EXPORT MscTransport* msc_create_send_transport(
+        MscDevice*,
+        const char* id,
+        const char* ice_parameters,
+        const char* ice_candidates,
+        const char* dtls_parameters
 );
 
-Transport* create_recv_transport(
-    Device*,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters
+EXPORT MscTransport* msc_create_recv_transport(
+        MscDevice*,
+        const char* id,
+        const char* ice_parameters,
+        const char* ice_candidates,
+        const char* dtls_parameters
 );
 
-Producer* create_producer(Device*, Transport*, int encoding_layers, const char* codec_options, const char* codec);
-void supply_video(Device*, Producer*, VideoFrame);
-void supply_audio(Device*, Producer*, AudioData);
+EXPORT MscProducer* msc_create_producer(MscDevice*, MscTransport*, int encoding_layers, const char* codec_options, const char* codec);
+EXPORT void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame);
+EXPORT void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData);
 
-Consumer* create_consumer(Device*, Transport*, const char* id, const char* producer_id, MediaKind kind, const char* rtp_parameters);
+EXPORT MscConsumer* msc_create_consumer(MscDevice*, MscTransport*, const char* id, const char* producer_id, MscMediaKind kind, const char* rtp_parameters);
 
-typedef void (*OnVideoFrame)(VideoFrame);
-typedef void (*OnAudioData)(AudioData);
+typedef void (*OnVideoFrame)(MscVideoFrame);
+typedef void (*OnAudioData)(MscAudioData);
 
-ConsumerSink* add_video_sink(Device*, Consumer*, OnVideoFrame);
-ConsumerSink* add_audio_sink(Device*, Consumer*, OnAudioData);
-void remove_video_sink(Device*, Consumer*, ConsumerSink*);
-void remove_audio_sink(Device*, Consumer*, ConsumerSink*);
+EXPORT MscConsumerSink* msc_add_video_sink(MscDevice*, MscConsumer*, OnVideoFrame);
+EXPORT MscConsumerSink* msc_add_audio_sink(MscDevice*, MscConsumer*, OnAudioData);
+EXPORT void msc_remove_video_sink(MscDevice*, MscConsumer*, MscConsumerSink*);
+EXPORT void msc_remove_audio_sink(MscDevice*, MscConsumer*, MscConsumerSink*);
 
 #ifdef __cplusplus
 };

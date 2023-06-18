@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(ms-client LANGUAGES CXX)
+project(msc LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,12 +8,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(LIBWEBRTC_INCLUDE_PATH "${PROJECT_SOURCE_DIR}/deps/webrtc/include")
 set(LIBWEBRTC_BINARY_PATH "${PROJECT_SOURCE_DIR}/deps/webrtc")
 
+add_compile_options(
+	-fPIE
+	-Wno-deprecated-declarations
+)
+
 set_source_files_properties(${SOURCE_FILES}
     PROPERTIES COMPILE_FLAGS
     -Wall -Wextra -Wpedantic
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_library(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
     src/lib.h
@@ -35,5 +40,3 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_link_libraries(${PROJECT_NAME} PUBLIC
     mediasoupclient
 )
-
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lpthread -lX11 -ldl")

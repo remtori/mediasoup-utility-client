@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/src",
+				"${workspaceFolder}/deps/libmediasoupclient/include",
+				"${workspaceFolder}/deps/libmediasoupclient/deps/libsdptransform/include",
+				"${workspaceFolder}/deps/webrtc/include",
+				"${workspaceFolder}/deps/webrtc/include/third_party/abseil-cpp",
+				"${workspaceFolder}/deps/webrtc/include/third_party/libyuv/include"
+            ],
+            "defines": [
+				"WEBRTC_POSIX"
+			],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-clang-x64",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}
