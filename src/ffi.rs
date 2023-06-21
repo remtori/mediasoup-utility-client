@@ -50,6 +50,7 @@ pub type WriteLog = ::std::option::Option<
 >;
 pub type OnConnect = ::std::option::Option<
     unsafe extern "C" fn(
+        device: *mut MscDevice,
         transport: *mut MscTransport,
         ctx: *mut ::std::os::raw::c_void,
         dtls_parameters: *const ::std::os::raw::c_char,
@@ -57,6 +58,7 @@ pub type OnConnect = ::std::option::Option<
 >;
 pub type OnConnectionStateChange = ::std::option::Option<
     unsafe extern "C" fn(
+        device: *mut MscDevice,
         transport: *mut MscTransport,
         ctx: *mut ::std::os::raw::c_void,
         connection_state: *const ::std::os::raw::c_char,
@@ -64,6 +66,7 @@ pub type OnConnectionStateChange = ::std::option::Option<
 >;
 pub type OnProduce = ::std::option::Option<
     unsafe extern "C" fn(
+        device: *mut MscDevice,
         transport: *mut MscTransport,
         ctx: *mut ::std::os::raw::c_void,
         promise_id: i64,
@@ -82,7 +85,12 @@ extern "C" {
     pub fn msc_cleanup();
     pub fn msc_version() -> *const ::std::os::raw::c_char;
     pub fn msc_free_string(arg1: *const ::std::os::raw::c_char);
-    pub fn msc_alloc_device() -> *mut MscDevice;
+    pub fn msc_alloc_device(
+        ctx: *mut ::std::os::raw::c_void,
+        on_connect_handler: OnConnect,
+        on_connection_state_change_handler: OnConnectionStateChange,
+        on_produce_handler: OnProduce,
+    ) -> *mut MscDevice;
     pub fn msc_free_device(arg1: *mut MscDevice);
     pub fn msc_get_rtp_capabilities(arg1: *mut MscDevice) -> *const ::std::os::raw::c_char;
     pub fn msc_is_loaded(arg1: *mut MscDevice) -> bool;
@@ -91,13 +99,6 @@ extern "C" {
         router_rtp_capabilities: *const ::std::os::raw::c_char,
     ) -> bool;
     pub fn msc_can_produce(arg1: *mut MscDevice, kind: MscMediaKind) -> bool;
-    pub fn msc_set_user_ptr(arg1: *mut MscDevice, arg2: *mut ::std::os::raw::c_void);
-    pub fn msc_set_on_connect_handler(arg1: *mut MscDevice, handler: OnConnect);
-    pub fn msc_set_on_connection_state_change_handler(
-        arg1: *mut MscDevice,
-        handler: OnConnectionStateChange,
-    );
-    pub fn msc_set_on_produce_handler(arg1: *mut MscDevice, handler: OnProduce);
     pub fn msc_fulfill_producer_id(
         arg1: *mut MscDevice,
         promise_id: i64,

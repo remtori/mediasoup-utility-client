@@ -56,30 +56,26 @@ pub struct None;
 pub struct Sender;
 pub struct Receiver;
 
+struct DeviceHandle(*mut MscDevice);
+
+impl Drop for DeviceHandle {
+    fn drop(&mut self) {
+        unsafe { msc_free_device(self.0) }
+    }
+}
+
 pub struct Device<State> {
-    inner: Arc<Inner>,
+    device: Arc<DeviceHandle>,
+    send_transport: Cell<*mut MscTransport>,
+    recv_transport: Cell<*mut MscTransport>,
+    signaling: Box<dyn Signaling>,
     _state: PhantomData<State>,
 }
 
 impl<S> std::fmt::Debug for Device<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Device")
-            .field("inner", &self.inner)
-            .finish()
-    }
-}
-
-struct Inner {
-    device: *mut MscDevice,
-    send_transport: Cell<*mut MscTransport>,
-    recv_transport: Cell<*mut MscTransport>,
-    signaling: Box<dyn Signaling>,
-}
-
-impl std::fmt::Debug for Inner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Inner")
-            .field("device", &self.device)
+            .field("device", &self.device.0)
             .field("send_transport", &self.send_transport)
             .field("recv_transport", &self.recv_transport)
             .finish()
@@ -89,60 +85,42 @@ impl std::fmt::Debug for Inner {
 // unsafe impl Send for Inner {}
 // unsafe impl Sync for Inner {}
 
-impl Drop for Inner {
-    fn drop(&mut self) {
-        unsafe { msc_free_device(self.device) }
-    }
-}
-
 impl Device<None> {
     pub fn new<T: 'static + Signaling>(signaling: T) -> Device<None> {
-        let signaling = Box::new(signaling);
-        Self::new_from_boxed(signaling)
-    }
-
-    pub fn new_from_boxed(signaling: Box<dyn Signaling>) -> Device<None> {
-        let device = unsafe { msc_alloc_device() };
-        let inner = Arc::new(Inner {
-            device,
-            send_transport: Cell::new(std::ptr::null_mut()),
-            recv_transport: Cell::new(std::ptr::null_mut()),
-            signaling,
-        });
-
-        unsafe extern "C" fn on_connect_handler(
+        unsafe extern "C" fn on_connect_handler<T: Signaling>(
+            _device: *mut MscDevice,
             transport: *mut MscTransport,
-            user_ptr: *mut c_void,
+            ctx: *mut c_void,
             dtls_parameters: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
             let dtls_parameters: DtlsParameters =
                 serde_json::from_slice(CStr::from_ptr(dtls_parameters).to_bytes()).unwrap();
 
-            let inner = &mut *(user_ptr as *mut Inner);
-            inner
-                .signaling
-                .on_connect(transport_id.to_str().unwrap(), &dtls_parameters);
+            let signaling = &mut *(ctx as *mut T);
+            signaling.on_connect(transport_id.to_str().unwrap(), &dtls_parameters);
         }
 
-        unsafe extern "C" fn on_connection_state_change_handler(
+        unsafe extern "C" fn on_connection_state_change_handler<T: Signaling>(
+            _device: *mut MscDevice,
             transport: *mut MscTransport,
-            user_ptr: *mut c_void,
+            ctx: *mut c_void,
             connection_state: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
             let connection_state = CStr::from_ptr(connection_state);
 
-            let inner = &mut *(user_ptr as *mut Inner);
-            inner.signaling.on_connection_state_change(
+            let signaling = &mut *(ctx as *mut T);
+            signaling.on_connection_state_change(
                 transport_id.to_str().unwrap(),
                 connection_state.to_str().unwrap(),
             );
         }
 
-        unsafe extern "C" fn on_produce_handler(
+        unsafe extern "C" fn on_produce_handler<T: Signaling>(
+            device: *mut MscDevice,
             transport: *mut MscTransport,
-            user_ptr: *mut c_void,
+            ctx: *mut c_void,
             promise_id: i64,
             kind: MscMediaKind,
             rtp_parameters: *const c_char,
@@ -151,8 +129,8 @@ impl Device<None> {
             let rtp_parameters: RtpParameters =
                 serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes()).unwrap();
 
-            let inner = &mut *(user_ptr as *mut Inner);
-            let producer_id = inner.signaling.on_produce(
+            let signaling = &mut *(ctx as *mut T);
+            let producer_id = signaling.on_produce(
                 transport_id.to_str().unwrap(),
                 #[allow(non_upper_case_globals)]
                 match kind {
@@ -164,21 +142,24 @@ impl Device<None> {
             );
 
             let producer_id = CString::new(producer_id.0).unwrap();
-            msc_fulfill_producer_id(inner.device, promise_id, producer_id.as_ptr());
+            msc_fulfill_producer_id(device, promise_id, producer_id.as_ptr());
         }
 
-        unsafe {
-            msc_set_user_ptr(device, &*inner as *const Inner as *mut c_void);
-            msc_set_on_connect_handler(device, Some(on_connect_handler));
-            msc_set_on_connection_state_change_handler(
-                device,
-                Some(on_connection_state_change_handler),
-            );
-            msc_set_on_produce_handler(device, Some(on_produce_handler));
-        }
+        let signaling = Box::new(signaling);
+        let device = unsafe {
+            msc_alloc_device(
+                signaling.as_ref() as *const T as *mut c_void,
+                Some(on_connect_handler::<T>),
+                Some(on_connection_state_change_handler::<T>),
+                Some(on_produce_handler::<T>),
+            )
+        };
 
         Device {
-            inner,
+            device: Arc::new(DeviceHandle(device)),
+            send_transport: Cell::new(std::ptr::null_mut()),
+            recv_transport: Cell::new(std::ptr::null_mut()),
+            signaling,
             _state: PhantomData,
         }
     }
@@ -192,26 +173,26 @@ impl<S> Device<S> {
 
     pub fn load_unchecked(&mut self, rtp_capabilities: impl Into<Vec<u8>>) {
         let rtp_capabilities = CString::new(rtp_capabilities.into()).unwrap();
-        unsafe { msc_load(self.inner.device, rtp_capabilities.as_ptr()) };
+        unsafe { msc_load(self.device.0, rtp_capabilities.as_ptr()) };
     }
 
     pub fn is_loaded(&self) -> bool {
-        unsafe { msc_is_loaded(self.inner.device) }
+        unsafe { msc_is_loaded(self.device.0) }
     }
 
     pub fn can_produce(&self, kind: MediaKind) -> bool {
-        unsafe { msc_can_produce(self.inner.device, kind as u32) }
+        unsafe { msc_can_produce(self.device.0, kind as u32) }
     }
 
     pub fn rtp_capabilities(&self) -> RtpCapabilities {
-        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.inner.device)) };
+        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0)) };
         let ret = serde_json::from_slice(caps.to_bytes()).unwrap();
         unsafe { msc_free_string(caps.as_ptr()) };
         ret
     }
 
     pub fn rtp_capabilities_unchecked(&self) -> Vec<u8> {
-        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.inner.device)) };
+        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0)) };
         let ret = caps.to_bytes().to_vec();
         unsafe { msc_free_string(caps.as_ptr()) };
         ret
@@ -252,7 +233,7 @@ impl Device<None> {
 
         let transport = unsafe {
             msc_create_send_transport(
-                self.inner.device,
+                self.device.0,
                 transport_id.as_ptr(),
                 ice_parameters.as_ptr(),
                 ice_candidates.as_ptr(),
@@ -260,10 +241,13 @@ impl Device<None> {
             )
         };
 
-        self.inner.send_transport.set(transport);
+        self.send_transport.set(transport);
 
         Device {
-            inner: self.inner,
+            device: self.device,
+            recv_transport: self.recv_transport,
+            send_transport: self.send_transport,
+            signaling: self.signaling,
             _state: PhantomData,
         }
     }
@@ -301,7 +285,7 @@ impl Device<None> {
 
         let transport = unsafe {
             msc_create_recv_transport(
-                self.inner.device,
+                self.device.0,
                 transport_id.as_ptr(),
                 ice_parameters.as_ptr(),
                 ice_candidates.as_ptr(),
@@ -309,10 +293,13 @@ impl Device<None> {
             )
         };
 
-        self.inner.recv_transport.set(transport);
+        self.recv_transport.set(transport);
 
         Device {
-            inner: self.inner,
+            device: self.device,
+            recv_transport: self.recv_transport,
+            send_transport: self.send_transport,
+            signaling: self.signaling,
             _state: PhantomData,
         }
     }
@@ -349,8 +336,8 @@ impl Device<Receiver> {
 
         let consumer = unsafe {
             msc_create_consumer(
-                self.inner.device,
-                self.inner.recv_transport.get(),
+                self.device.0,
+                self.recv_transport.get(),
                 id.as_ptr(),
                 producer_id.as_ptr(),
                 MediaKind::Audio as u32,
@@ -394,7 +381,6 @@ impl Device<Receiver> {
         };
 
         AudioSink {
-            device: Arc::clone(&self.inner),
             consumer,
             sink,
             _callback: on_audio_data,
@@ -431,8 +417,8 @@ impl Device<Receiver> {
 
         let consumer = unsafe {
             msc_create_consumer(
-                self.inner.device,
-                self.inner.recv_transport.get(),
+                self.device.0,
+                self.recv_transport.get(),
                 id.as_ptr(),
                 producer_id.as_ptr(),
                 MediaKind::Video as u32,
@@ -470,7 +456,6 @@ impl Device<Receiver> {
         };
 
         VideoSink {
-            device: Arc::clone(&self.inner),
             consumer,
             sink,
             _callback: on_video_frame,
@@ -479,7 +464,6 @@ impl Device<Receiver> {
 }
 
 pub struct AudioSink {
-    device: Arc<Inner>,
     consumer: *mut MscConsumer,
     sink: *mut MscConsumerSink,
     _callback: Box<dyn (FnMut(AudioData)) + Send + 'static>,
@@ -497,7 +481,6 @@ impl Drop for AudioSink {
 }
 
 pub struct VideoSink {
-    device: Arc<Inner>,
     consumer: *mut MscConsumer,
     sink: *mut MscConsumerSink,
     _callback: Box<dyn (FnMut(VideoFrame)) + Send + 'static>,
