@@ -1,8 +1,8 @@
 use std::error::Error;
 
 use rusty_msc::{
-    initialize, AudioData, Device, DtlsParameters, IceCandidate, IceParameters, MediaKind,
-    ProducerId, RtpCapabilities, RtpParameters, VideoFrame,
+    AudioData, Device, DtlsParameters, MediaKind, ProducerId, RtpCapabilities, RtpParameters,
+    VideoFrame,
 };
 
 pub extern crate rusty_msc;
@@ -91,8 +91,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .bearer_auth(BEARER_AUTH)
         .send()?;
 
-    initialize();
-
     let device = Device::new(Signal {
         client: client.clone(),
     });
@@ -120,7 +118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let consumers: Vec<ConsumerInfo> = consumers.json()?;
     for consumer in consumers {
-        let (media_kind, is_screen) = match consumer.producer_type.as_str() {
+        let (media_kind, _is_screen) = match consumer.producer_type.as_str() {
             "screen" => (MediaKind::Video, true),
             "video" => (MediaKind::Video, false),
             "audio" => (MediaKind::Audio, false),

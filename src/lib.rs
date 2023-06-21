@@ -5,7 +5,7 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     os::raw::{c_char, c_void},
-    sync::Arc,
+    sync::{Arc, Once},
 };
 
 pub use crate::types::*;
@@ -15,7 +15,7 @@ use once_cell::sync::OnceCell;
 pub mod ffi;
 mod types;
 
-pub fn initialize() {
+fn initialize() {
     unsafe extern "C" fn print_fn(str: *const c_char, length: i32) {
         let bytes = std::slice::from_raw_parts(str as *const u8, length as usize + 1);
         let str = CStr::from_bytes_with_nul(bytes).unwrap();
@@ -25,7 +25,8 @@ pub fn initialize() {
     unsafe { msc_initialize(Some(print_fn)) };
 }
 
-pub fn cleanup() {
+#[allow(unused)]
+fn cleanup() {
     unsafe { msc_cleanup() };
 }
 
@@ -130,6 +131,11 @@ impl<S, T: Hash + Eq> std::fmt::Debug for Device<S, T> {
 
 impl<T: Hash + Eq> Device<None, T> {
     pub fn new<S: 'static + Signaling<T>>(signaling: S) -> Device<None, T> {
+        static ONCE_INIT: Once = Once::new();
+        ONCE_INIT.call_once(|| {
+            initialize();
+        });
+
         unsafe extern "C" fn on_connect_handler<T, S: Signaling<T>>(
             _device: *mut MscDevice,
             transport: *mut MscTransport,
