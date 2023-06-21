@@ -144,12 +144,12 @@ extern "C" {
     pub fn msc_free_consumer(arg1: *mut MscConsumer);
     pub fn msc_add_video_sink(
         consumer: *mut MscConsumer,
-        user_ptr: *mut ::std::os::raw::c_void,
+        ctx: *mut ::std::os::raw::c_void,
         callback: OnVideoFrame,
     ) -> *mut MscConsumerSink;
     pub fn msc_add_audio_sink(
         consumer: *mut MscConsumer,
-        user_ptr: *mut ::std::os::raw::c_void,
+        ctx: *mut ::std::os::raw::c_void,
         callback: OnAudioData,
     ) -> *mut MscConsumerSink;
     pub fn msc_remove_video_sink(consumer: *mut MscConsumer, sink: *mut MscConsumerSink);

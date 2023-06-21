@@ -4,14 +4,14 @@ set -Eeuo pipefail
 
 cd "$(dirname "$0")"
 
-cmake -GNinja -Bbuild
-cd build
+cmake -GNinja -Bcmake-build-release
+cd cmake-build-release
 cmake --build .
 
 ar -M <<EOF
 CREATE librusty_msc.a
 ADDLIB libmsc.a
-ADDLIB deps/libmediasoupclient/libfmt.a
+ADDLIB deps/fmt/libfmt.a
 ADDLIB deps/libmediasoupclient/libmediasoupclient.a
 ADDLIB deps/libmediasoupclient/libsdptransform/libsdptransform.a
 ADDLIB ../deps/webrtc/libwebrtc.a

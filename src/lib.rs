@@ -40,16 +40,16 @@ pub fn version() -> &'static str {
 }
 
 pub trait Signaling: Send + Sync {
-    fn on_connect(&mut self, transport_id: &str, dtls_parameters: &DtlsParameters);
+    fn connect_transport(&mut self, transport_id: &str, dtls_parameters: &DtlsParameters);
 
-    fn on_connection_state_change(&mut self, transport_id: &str, connection_state: &str);
-
-    fn on_produce(
+    fn create_producer(
         &mut self,
         transport_id: &str,
         kind: MediaKind,
         rtp_parameters: &RtpParameters,
     ) -> ProducerId;
+
+    fn on_connection_state_change(&mut self, transport_id: &str, connection_state: &str);
 }
 
 pub struct None;
@@ -98,7 +98,7 @@ impl Device<None> {
                 serde_json::from_slice(CStr::from_ptr(dtls_parameters).to_bytes()).unwrap();
 
             let signaling = &mut *(ctx as *mut T);
-            signaling.on_connect(transport_id.to_str().unwrap(), &dtls_parameters);
+            signaling.connect_transport(transport_id.to_str().unwrap(), &dtls_parameters);
         }
 
         unsafe extern "C" fn on_connection_state_change_handler<T: Signaling>(
@@ -130,7 +130,7 @@ impl Device<None> {
                 serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes()).unwrap();
 
             let signaling = &mut *(ctx as *mut T);
-            let producer_id = signaling.on_produce(
+            let producer_id = signaling.create_producer(
                 transport_id.to_str().unwrap(),
                 #[allow(non_upper_case_globals)]
                 match kind {

@@ -104,7 +104,7 @@ pub struct RtpCodecParameters {
     pub payload_type: i32,
     pub clock_rate: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub channesl: Option<i32>,
+    pub channels: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -125,18 +125,18 @@ pub struct RtpHeaderExtensionParameters {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SSrc {
-    pub ssrc: i32,
+    pub ssrc: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RtpEncodingParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssrc: Option<i32>,
+    pub ssrc: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub codec_payload_type: Option<i32>,
+    pub codec_payload_type: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rtx: Option<SSrc>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -144,9 +144,9 @@ pub struct RtpEncodingParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scalability_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub scale_resolution_down_by: Option<i32>,
+    pub scale_resolution_down_by: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_bitrate: Option<i32>,
+    pub max_bitrate: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -154,8 +154,7 @@ pub struct RtpEncodingParameters {
 pub struct RtcpParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     cname: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reduced_size: Option<bool>,
+    reduced_size: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     mux: Option<bool>,
 }

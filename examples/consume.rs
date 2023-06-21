@@ -16,7 +16,7 @@ struct Signal {
 }
 
 impl rusty_msc::Signaling for Signal {
-    fn on_connect(&mut self, _transport_id: &str, dtls_parameters: &DtlsParameters) {
+    fn connect_transport(&mut self, _transport_id: &str, dtls_parameters: &DtlsParameters) {
         println!("connecting transport");
 
         #[derive(Debug, serde::Serialize)]
@@ -40,7 +40,7 @@ impl rusty_msc::Signaling for Signal {
         println!("[{transport_id}] connection state changed: {connection_state}");
     }
 
-    fn on_produce(
+    fn create_producer(
         &mut self,
         transport_id: &str,
         kind: MediaKind,
@@ -111,14 +111,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         })
         .send()?;
 
-    #[derive(Debug, serde::Deserialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
     #[serde(rename_all = "camelCase")]
     struct ConsumerInfo {
         consumer_id: String,
         producer_id: String,
         kind: String,
         producer_type: String,
-        rtp_parameters: serde_json::Value,
+        rtp_parameters: RtpParameters,
     }
 
     let consumers: Vec<ConsumerInfo> = consumers.json()?;
@@ -158,7 +158,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("Done, exiting..");
-    // std::thread::park();
+    std::thread::park();
 
     Ok(())
 }
