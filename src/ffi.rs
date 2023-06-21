@@ -93,7 +93,6 @@ extern "C" {
     ) -> *mut MscDevice;
     pub fn msc_free_device(arg1: *mut MscDevice);
     pub fn msc_get_rtp_capabilities(arg1: *mut MscDevice) -> *const ::std::os::raw::c_char;
-    pub fn msc_is_loaded(arg1: *mut MscDevice) -> bool;
     pub fn msc_load(
         arg1: *mut MscDevice,
         router_rtp_capabilities: *const ::std::os::raw::c_char,
@@ -104,21 +103,18 @@ extern "C" {
         promise_id: i64,
         producer_id: *const ::std::os::raw::c_char,
     );
+    pub fn msc_create_transport(
+        arg1: *mut MscDevice,
+        is_send: bool,
+        id: *const ::std::os::raw::c_char,
+        ice_parameters: *const ::std::os::raw::c_char,
+        ice_candidates: *const ::std::os::raw::c_char,
+        dtls_parameters: *const ::std::os::raw::c_char,
+        transport_ctx: *mut ::std::os::raw::c_void,
+    ) -> *mut MscTransport;
+    pub fn msc_free_transport(arg1: *mut MscTransport);
     pub fn msc_transport_get_id(arg1: *mut MscTransport) -> *const ::std::os::raw::c_char;
-    pub fn msc_create_send_transport(
-        arg1: *mut MscDevice,
-        id: *const ::std::os::raw::c_char,
-        ice_parameters: *const ::std::os::raw::c_char,
-        ice_candidates: *const ::std::os::raw::c_char,
-        dtls_parameters: *const ::std::os::raw::c_char,
-    ) -> *mut MscTransport;
-    pub fn msc_create_recv_transport(
-        arg1: *mut MscDevice,
-        id: *const ::std::os::raw::c_char,
-        ice_parameters: *const ::std::os::raw::c_char,
-        ice_candidates: *const ::std::os::raw::c_char,
-        dtls_parameters: *const ::std::os::raw::c_char,
-    ) -> *mut MscTransport;
+    pub fn msc_transport_get_ctx(arg1: *mut MscTransport) -> *const ::std::os::raw::c_void;
     pub fn msc_create_producer(
         device: *mut MscDevice,
         transport: *mut MscTransport,

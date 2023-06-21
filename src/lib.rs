@@ -1,6 +1,8 @@
 use std::{
-    cell::Cell,
+    cell::RefCell,
+    collections::HashMap,
     ffi::{CStr, CString},
+    hash::Hash,
     marker::PhantomData,
     os::raw::{c_char, c_void},
     sync::Arc,
@@ -8,6 +10,7 @@ use std::{
 
 pub use crate::types::*;
 use ffi::*;
+use once_cell::sync::OnceCell;
 
 pub mod ffi;
 mod types;
@@ -27,8 +30,6 @@ pub fn cleanup() {
 }
 
 pub fn version() -> &'static str {
-    use once_cell::sync::OnceCell;
-
     static VERSION: OnceCell<String> = OnceCell::new();
 
     VERSION.get_or_init(|| {
@@ -39,22 +40,54 @@ pub fn version() -> &'static str {
     })
 }
 
-pub trait Signaling: Send + Sync {
-    fn connect_transport(&mut self, transport_id: &str, dtls_parameters: &DtlsParameters);
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportCreationOptions {
+    pub id: String,
+    pub ice_parameters: IceParameters,
+    pub ice_candidates: Vec<IceCandidate>,
+    pub dtls_parameters: DtlsParameters,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TransportKind {
+    Send,
+    Recv,
+}
+
+pub trait Signaling<T>: Send + Sync {
+    fn create_transport(
+        &mut self,
+        channel_id: &T,
+        kind: TransportKind,
+        rtp_capabilities: &RtpCapabilities,
+    ) -> TransportCreationOptions;
+
+    fn connect_transport(
+        &mut self,
+        channel_id: &T,
+        transport_id: &str,
+        dtls_parameters: &DtlsParameters,
+    );
 
     fn create_producer(
         &mut self,
+        channel_id: &T,
         transport_id: &str,
         kind: MediaKind,
         rtp_parameters: &RtpParameters,
     ) -> ProducerId;
 
-    fn on_connection_state_change(&mut self, transport_id: &str, connection_state: &str);
+    fn on_connection_state_change(
+        &mut self,
+        channel_id: &T,
+        transport_id: &str,
+        connection_state: &str,
+    );
 }
 
 pub struct None;
-pub struct Sender;
-pub struct Receiver;
+pub struct Loaded;
 
 struct DeviceHandle(*mut MscDevice);
 
@@ -64,20 +97,30 @@ impl Drop for DeviceHandle {
     }
 }
 
-pub struct Device<State> {
+struct TransportHandle {
+    address: *mut MscTransport,
+    _ctx: Box<dyn std::any::Any>,
+}
+
+impl Drop for TransportHandle {
+    fn drop(&mut self) {
+        unsafe { msc_free_transport(self.address) }
+    }
+}
+
+pub struct Device<State, T: Hash + Eq> {
     device: Arc<DeviceHandle>,
-    send_transport: Cell<*mut MscTransport>,
-    recv_transport: Cell<*mut MscTransport>,
-    signaling: Box<dyn Signaling>,
+    device_rtp_capabilities: OnceCell<RtpCapabilities>,
+    transports: HashMap<(T, TransportKind), TransportHandle>,
+    signaling: RefCell<Box<dyn Signaling<T>>>,
     _state: PhantomData<State>,
 }
 
-impl<S> std::fmt::Debug for Device<S> {
+impl<S, T: Hash + Eq> std::fmt::Debug for Device<S, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Device")
             .field("device", &self.device.0)
-            .field("send_transport", &self.send_transport)
-            .field("recv_transport", &self.recv_transport)
+            .field("rtp_capabilities", &self.device_rtp_capabilities.get())
             .finish()
     }
 }
@@ -85,39 +128,48 @@ impl<S> std::fmt::Debug for Device<S> {
 // unsafe impl Send for Inner {}
 // unsafe impl Sync for Inner {}
 
-impl Device<None> {
-    pub fn new<T: 'static + Signaling>(signaling: T) -> Device<None> {
-        unsafe extern "C" fn on_connect_handler<T: Signaling>(
+impl<T: Hash + Eq> Device<None, T> {
+    pub fn new<S: 'static + Signaling<T>>(signaling: S) -> Device<None, T> {
+        unsafe extern "C" fn on_connect_handler<T, S: Signaling<T>>(
             _device: *mut MscDevice,
             transport: *mut MscTransport,
             ctx: *mut c_void,
             dtls_parameters: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
+            let transport_ctx = msc_transport_get_ctx(transport);
+
             let dtls_parameters: DtlsParameters =
                 serde_json::from_slice(CStr::from_ptr(dtls_parameters).to_bytes()).unwrap();
 
-            let signaling = &mut *(ctx as *mut T);
-            signaling.connect_transport(transport_id.to_str().unwrap(), &dtls_parameters);
+            let signaling = &mut *(ctx as *mut S);
+            signaling.connect_transport(
+                &*(transport_ctx as *const T),
+                transport_id.to_str().unwrap(),
+                &dtls_parameters,
+            );
         }
 
-        unsafe extern "C" fn on_connection_state_change_handler<T: Signaling>(
+        unsafe extern "C" fn on_connection_state_change_handler<T, S: Signaling<T>>(
             _device: *mut MscDevice,
             transport: *mut MscTransport,
             ctx: *mut c_void,
             connection_state: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
+            let transport_ctx = msc_transport_get_ctx(transport);
+
             let connection_state = CStr::from_ptr(connection_state);
 
-            let signaling = &mut *(ctx as *mut T);
+            let signaling = &mut *(ctx as *mut S);
             signaling.on_connection_state_change(
+                &*(transport_ctx as *const T),
                 transport_id.to_str().unwrap(),
                 connection_state.to_str().unwrap(),
             );
         }
 
-        unsafe extern "C" fn on_produce_handler<T: Signaling>(
+        unsafe extern "C" fn on_produce_handler<T, S: Signaling<T>>(
             device: *mut MscDevice,
             transport: *mut MscTransport,
             ctx: *mut c_void,
@@ -126,11 +178,14 @@ impl Device<None> {
             rtp_parameters: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
+            let transport_ctx = msc_transport_get_ctx(transport);
+
             let rtp_parameters: RtpParameters =
                 serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes()).unwrap();
 
-            let signaling = &mut *(ctx as *mut T);
+            let signaling = &mut *(ctx as *mut S);
             let producer_id = signaling.create_producer(
+                &*(transport_ctx as *const T),
                 transport_id.to_str().unwrap(),
                 #[allow(non_upper_case_globals)]
                 match kind {
@@ -148,166 +203,112 @@ impl Device<None> {
         let signaling = Box::new(signaling);
         let device = unsafe {
             msc_alloc_device(
-                signaling.as_ref() as *const T as *mut c_void,
-                Some(on_connect_handler::<T>),
-                Some(on_connection_state_change_handler::<T>),
-                Some(on_produce_handler::<T>),
+                signaling.as_ref() as *const S as *mut c_void,
+                Some(on_connect_handler::<T, S>),
+                Some(on_connection_state_change_handler::<T, S>),
+                Some(on_produce_handler::<T, S>),
             )
         };
 
         Device {
             device: Arc::new(DeviceHandle(device)),
-            send_transport: Cell::new(std::ptr::null_mut()),
-            recv_transport: Cell::new(std::ptr::null_mut()),
-            signaling,
+            device_rtp_capabilities: OnceCell::new(),
+            transports: Default::default(),
+            signaling: RefCell::new(signaling),
             _state: PhantomData,
         }
     }
-}
 
-impl<S> Device<S> {
-    pub fn load(&mut self, rtp_capabilities: &RtpCapabilities) {
+    pub fn load(self, rtp_capabilities: &RtpCapabilities) -> Device<Loaded, T> {
         let rtp_capabilities = serde_json::to_vec(rtp_capabilities).unwrap();
         self.load_unchecked(rtp_capabilities)
     }
 
-    pub fn load_unchecked(&mut self, rtp_capabilities: impl Into<Vec<u8>>) {
+    pub fn load_unchecked(self, rtp_capabilities: impl Into<Vec<u8>>) -> Device<Loaded, T> {
         let rtp_capabilities = CString::new(rtp_capabilities.into()).unwrap();
         unsafe { msc_load(self.device.0, rtp_capabilities.as_ptr()) };
-    }
 
-    pub fn is_loaded(&self) -> bool {
-        unsafe { msc_is_loaded(self.device.0) }
+        Device {
+            device: self.device,
+            device_rtp_capabilities: self.device_rtp_capabilities,
+            transports: self.transports,
+            signaling: self.signaling,
+            _state: PhantomData,
+        }
     }
+}
 
+impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
     pub fn can_produce(&self, kind: MediaKind) -> bool {
         unsafe { msc_can_produce(self.device.0, kind as u32) }
     }
 
-    pub fn rtp_capabilities(&self) -> RtpCapabilities {
-        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0)) };
-        let ret = serde_json::from_slice(caps.to_bytes()).unwrap();
-        unsafe { msc_free_string(caps.as_ptr()) };
-        ret
+    pub fn rtp_capabilities(&self) -> &RtpCapabilities {
+        self.device_rtp_capabilities.get_or_init(|| {
+            let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0)) };
+            let ret = serde_json::from_slice(caps.to_bytes()).unwrap();
+            unsafe { msc_free_string(caps.as_ptr()) };
+            ret
+        })
     }
 
-    pub fn rtp_capabilities_unchecked(&self) -> Vec<u8> {
-        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0)) };
-        let ret = caps.to_bytes().to_vec();
-        unsafe { msc_free_string(caps.as_ptr()) };
-        ret
-    }
-}
+    fn get_or_create_transport(
+        &mut self,
+        transport_id: &T,
+        transport_kind: TransportKind,
+    ) -> *mut MscTransport {
+        // TODO: Do the hashing here to avoid unnecessary .clone()
+        let transport_id = transport_id.clone();
+        let map_key = (transport_id, transport_kind);
+        if let Some(transport) = self.transports.get(&map_key) {
+            return transport.address;
+        }
 
-impl Device<None> {
-    pub fn create_send_transport(
-        self,
-        transport_id: String,
-        ice_parameters: &IceParameters,
-        ice_candidates: &Vec<IceCandidate>,
-        dtls_parameters: &DtlsParameters,
-    ) -> Device<Sender> {
-        let ice_parameters = serde_json::to_string(ice_parameters).unwrap();
-        let ice_candidates = serde_json::to_string(ice_candidates).unwrap();
-        let dtls_parameters = serde_json::to_string(dtls_parameters).unwrap();
-
-        self.create_send_transport_unchecked(
-            transport_id,
+        let transport_id = map_key.0;
+        let TransportCreationOptions {
+            id,
             ice_parameters,
             ice_candidates,
             dtls_parameters,
-        )
-    }
+        } = self.signaling.borrow_mut().create_transport(
+            &transport_id,
+            TransportKind::Send,
+            self.rtp_capabilities(),
+        );
 
-    pub fn create_send_transport_unchecked(
-        self,
-        transport_id: impl Into<Vec<u8>>,
-        ice_parameters: impl Into<Vec<u8>>,
-        ice_candidates: impl Into<Vec<u8>>,
-        dtls_parameters: impl Into<Vec<u8>>,
-    ) -> Device<Sender> {
-        let transport_id = CString::new(transport_id).unwrap();
-        let ice_parameters = CString::new(ice_parameters).unwrap();
-        let ice_candidates = CString::new(ice_candidates).unwrap();
-        let dtls_parameters = CString::new(dtls_parameters).unwrap();
+        let id = CString::new(id).unwrap();
+        let ice_parameters = CString::new(serde_json::to_string(&ice_parameters).unwrap()).unwrap();
+        let ice_candidates = CString::new(serde_json::to_string(&ice_candidates).unwrap()).unwrap();
+        let dtls_parameters =
+            CString::new(serde_json::to_string(&dtls_parameters).unwrap()).unwrap();
 
+        let mut transport_ctx = Box::new(transport_id.clone());
         let transport = unsafe {
-            msc_create_send_transport(
+            msc_create_transport(
                 self.device.0,
-                transport_id.as_ptr(),
+                transport_kind == TransportKind::Send,
+                id.as_ptr(),
                 ice_parameters.as_ptr(),
                 ice_candidates.as_ptr(),
                 dtls_parameters.as_ptr(),
+                transport_ctx.as_mut() as *mut T as *mut c_void,
             )
         };
 
-        self.send_transport.set(transport);
+        self.transports.insert(
+            (transport_id, transport_kind),
+            TransportHandle {
+                address: transport,
+                _ctx: transport_ctx,
+            },
+        );
 
-        Device {
-            device: self.device,
-            recv_transport: self.recv_transport,
-            send_transport: self.send_transport,
-            signaling: self.signaling,
-            _state: PhantomData,
-        }
+        transport
     }
 
-    pub fn create_recv_transport(
-        self,
-        transport_id: String,
-        ice_parameters: &IceParameters,
-        ice_candidates: &Vec<IceCandidate>,
-        dtls_parameters: &DtlsParameters,
-    ) -> Device<Receiver> {
-        let ice_parameters = serde_json::to_string(ice_parameters).unwrap();
-        let ice_candidates = serde_json::to_string(ice_candidates).unwrap();
-        let dtls_parameters = serde_json::to_string(dtls_parameters).unwrap();
-
-        self.create_recv_transport_unchecked(
-            transport_id,
-            ice_parameters,
-            ice_candidates,
-            dtls_parameters,
-        )
-    }
-
-    pub fn create_recv_transport_unchecked(
-        self,
-        transport_id: impl Into<Vec<u8>>,
-        ice_parameters: impl Into<Vec<u8>>,
-        ice_candidates: impl Into<Vec<u8>>,
-        dtls_parameters: impl Into<Vec<u8>>,
-    ) -> Device<Receiver> {
-        let transport_id = CString::new(transport_id).unwrap();
-        let ice_parameters = CString::new(ice_parameters).unwrap();
-        let ice_candidates = CString::new(ice_candidates).unwrap();
-        let dtls_parameters = CString::new(dtls_parameters).unwrap();
-
-        let transport = unsafe {
-            msc_create_recv_transport(
-                self.device.0,
-                transport_id.as_ptr(),
-                ice_parameters.as_ptr(),
-                ice_candidates.as_ptr(),
-                dtls_parameters.as_ptr(),
-            )
-        };
-
-        self.recv_transport.set(transport);
-
-        Device {
-            device: self.device,
-            recv_transport: self.recv_transport,
-            send_transport: self.send_transport,
-            signaling: self.signaling,
-            _state: PhantomData,
-        }
-    }
-}
-
-impl Device<Receiver> {
     pub fn create_audio_consumer<F>(
         &mut self,
+        transport_id: &T,
         id: String,
         producer_id: String,
         rtp_parameters: &RtpParameters,
@@ -317,11 +318,18 @@ impl Device<Receiver> {
         F: (FnMut(AudioData)) + Send + 'static,
     {
         let rtp_parameters = serde_json::to_string(rtp_parameters).unwrap();
-        self.create_audio_consumer_unchecked(id, producer_id, rtp_parameters, on_audio_data)
+        self.create_audio_consumer_unchecked(
+            transport_id,
+            id,
+            producer_id,
+            rtp_parameters,
+            on_audio_data,
+        )
     }
 
     pub fn create_audio_consumer_unchecked<F>(
         &mut self,
+        transport_id: &T,
         id: impl Into<Vec<u8>>,
         producer_id: impl Into<Vec<u8>>,
         rtp_parameters: impl Into<Vec<u8>>,
@@ -334,10 +342,11 @@ impl Device<Receiver> {
         let producer_id = CString::new(producer_id).unwrap();
         let rtp_parameters = CString::new(rtp_parameters).unwrap();
 
+        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv);
         let consumer = unsafe {
             msc_create_consumer(
                 self.device.0,
-                self.recv_transport.get(),
+                transport,
                 id.as_ptr(),
                 producer_id.as_ptr(),
                 MediaKind::Audio as u32,
@@ -389,6 +398,7 @@ impl Device<Receiver> {
 
     pub fn create_video_consumer<F>(
         &mut self,
+        transport_id: &T,
         id: String,
         producer_id: String,
         rtp_parameters: &RtpParameters,
@@ -398,11 +408,18 @@ impl Device<Receiver> {
         F: (FnMut(VideoFrame)) + Send + 'static,
     {
         let rtp_parameters = serde_json::to_string(rtp_parameters).unwrap();
-        self.create_video_consumer_unchecked(id, producer_id, rtp_parameters, on_video_frame)
+        self.create_video_consumer_unchecked(
+            transport_id,
+            id,
+            producer_id,
+            rtp_parameters,
+            on_video_frame,
+        )
     }
 
     pub fn create_video_consumer_unchecked<F>(
         &mut self,
+        transport_id: &T,
         id: impl Into<Vec<u8>>,
         producer_id: impl Into<Vec<u8>>,
         rtp_parameters: impl Into<Vec<u8>>,
@@ -415,10 +432,11 @@ impl Device<Receiver> {
         let producer_id = CString::new(producer_id).unwrap();
         let rtp_parameters = CString::new(rtp_parameters).unwrap();
 
+        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv);
         let consumer = unsafe {
             msc_create_consumer(
                 self.device.0,
-                self.recv_transport.get(),
+                transport,
                 id.as_ptr(),
                 producer_id.as_ptr(),
                 MediaKind::Video as u32,

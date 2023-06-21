@@ -319,13 +319,6 @@ const char* msc_get_rtp_capabilities(MscDevice* in_device) noexcept
     return alloc_string(device->device.GetRtpCapabilities().dump());
 }
 
-bool msc_is_loaded(MscDevice* in_device) noexcept
-{
-    println("Device::is_loaded()");
-    auto* device = reinterpret_cast<impl::Device*>(in_device);
-    return device->device.IsLoaded();
-}
-
 bool msc_load(MscDevice* in_device, const char* router_rtp_capabilities) noexcept
 {
     println("Device::load()");
@@ -359,12 +352,21 @@ const char* msc_transport_get_id(MscTransport* in_transport) noexcept
     return alloc_string(transport->GetId());
 }
 
-MscTransport* msc_create_send_transport(
+const void* msc_transport_get_ctx(MscTransport* in_transport) noexcept
+{
+    println("Transport::get_ctx()");
+    auto* transport = reinterpret_cast<mediasoupclient::Transport*>(in_transport);
+    return reinterpret_cast<void*>(transport->GetAppData().value("ctx", (uintptr_t)0));
+}
+
+MscTransport* msc_create_transport(
     MscDevice* in_device,
+    bool is_send,
     const char* id,
     const char* ice_parameters,
     const char* ice_candidates,
-    const char* dtls_parameters) noexcept
+    const char* dtls_parameters,
+    void* transport_ctx) noexcept
 {
     println("Device::create_send_transport()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
@@ -372,44 +374,40 @@ MscTransport* msc_create_send_transport(
     mediasoupclient::PeerConnection::Options options;
     options.factory = impl::peer_connection_factory();
 
-    device->send_transport = std::unique_ptr<mediasoupclient::SendTransport>(
-        device->device.CreateSendTransport(
+    nlohmann::json user_data = {
+        { "ctx", reinterpret_cast<uintptr_t>(transport_ctx) }
+    };
+
+    mediasoupclient::Transport* transport;
+    if (is_send) {
+        transport = device->device.CreateSendTransport(
             device,
             id,
             nlohmann::json::parse(ice_parameters),
             nlohmann::json::parse(ice_candidates),
             nlohmann::json::parse(dtls_parameters),
-            &options));
+            &options,
+            user_data);
+    } else {
+        transport = device->device.CreateRecvTransport(
+            device,
+            id,
+            nlohmann::json::parse(ice_parameters),
+            nlohmann::json::parse(ice_candidates),
+            nlohmann::json::parse(dtls_parameters),
+            &options,
+            user_data);
+    }
 
-    return reinterpret_cast<::MscTransport*>(device->send_transport.get());
+    return reinterpret_cast<MscTransport*>(transport);
 }
 
-MscTransport* msc_create_recv_transport(
-    MscDevice* in_device,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters) noexcept
+void msc_free_transport(MscTransport* in_transport) noexcept
 {
-    println("Device::create_recv_transport()");
-
-    auto* device = reinterpret_cast<impl::Device*>(in_device);
-
-    mediasoupclient::PeerConnection::Options options;
-    options.factory = impl::peer_connection_factory();
-
-    device->recv_transport = std::unique_ptr<mediasoupclient::RecvTransport>(
-        device->device.CreateRecvTransport(
-            device,
-            id,
-            nlohmann::json::parse(ice_parameters),
-            nlohmann::json::parse(ice_candidates),
-            nlohmann::json::parse(dtls_parameters),
-            nullptr,
-            &options,
-            nlohmann::json::object()));
-
-    return reinterpret_cast<::MscTransport*>(device->recv_transport.get());
+    println("delete Transport");
+    auto* transport = reinterpret_cast<mediasoupclient::Transport*>(in_transport);
+    transport->Close();
+    delete transport;
 }
 
 MscProducer* msc_create_producer(

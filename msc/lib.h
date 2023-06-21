@@ -81,27 +81,24 @@ EXPORT MscDevice* msc_alloc_device(
 EXPORT void msc_free_device(MscDevice*) NOEXCEPT;
 
 EXPORT const char* msc_get_rtp_capabilities(MscDevice*) NOEXCEPT;
-EXPORT bool msc_is_loaded(MscDevice*) NOEXCEPT;
 EXPORT bool msc_load(MscDevice*, const char* router_rtp_capabilities) NOEXCEPT;
 EXPORT bool msc_can_produce(MscDevice*, MscMediaKind kind) NOEXCEPT;
 
 EXPORT void msc_fulfill_producer_id(MscDevice*, int64_t promise_id, const char* producer_id) NOEXCEPT;
 
+
+EXPORT MscTransport* msc_create_transport(
+    MscDevice*,
+	bool is_send,
+    const char* id,
+    const char* ice_parameters,
+    const char* ice_candidates,
+    const char* dtls_parameters,
+	void* transport_ctx) NOEXCEPT;
+EXPORT void msc_free_transport(MscTransport*) NOEXCEPT;
+
 EXPORT const char* msc_transport_get_id(MscTransport*) NOEXCEPT;
-
-EXPORT MscTransport* msc_create_send_transport(
-    MscDevice*,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters) NOEXCEPT;
-
-EXPORT MscTransport* msc_create_recv_transport(
-    MscDevice*,
-    const char* id,
-    const char* ice_parameters,
-    const char* ice_candidates,
-    const char* dtls_parameters) NOEXCEPT;
+EXPORT const void* msc_transport_get_ctx(MscTransport*) NOEXCEPT;
 
 EXPORT MscProducer* msc_create_producer(
     MscDevice* device,
