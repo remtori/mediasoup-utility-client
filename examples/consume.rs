@@ -158,7 +158,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("Done, exiting..");
-    std::thread::park();
+    // std::thread::park();
 
     Ok(())
 }

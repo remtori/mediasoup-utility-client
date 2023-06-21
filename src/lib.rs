@@ -19,7 +19,7 @@ pub fn initialize() {
         println!("[MSC FFI] {}", str.to_string_lossy());
     }
 
-    unsafe { msc_initialize(print_fn) };
+    unsafe { msc_initialize(Some(print_fn)) };
 }
 
 pub fn cleanup() {
@@ -112,14 +112,14 @@ impl Device<None> {
 
         unsafe extern "C" fn on_connect_handler(
             transport: *mut MscTransport,
-            user_ptr: MscUserPtr,
+            user_ptr: *mut c_void,
             dtls_parameters: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
             let dtls_parameters: DtlsParameters =
                 serde_json::from_slice(CStr::from_ptr(dtls_parameters).to_bytes()).unwrap();
 
-            let inner = user_ptr.cast_mut::<Inner>();
+            let inner = &mut *(user_ptr as *mut Inner);
             inner
                 .signaling
                 .on_connect(transport_id.to_str().unwrap(), &dtls_parameters);
@@ -127,13 +127,13 @@ impl Device<None> {
 
         unsafe extern "C" fn on_connection_state_change_handler(
             transport: *mut MscTransport,
-            user_ptr: MscUserPtr,
+            user_ptr: *mut c_void,
             connection_state: *const c_char,
         ) {
             let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
             let connection_state = CStr::from_ptr(connection_state);
 
-            let inner = user_ptr.cast_mut::<Inner>();
+            let inner = &mut *(user_ptr as *mut Inner);
             inner.signaling.on_connection_state_change(
                 transport_id.to_str().unwrap(),
                 connection_state.to_str().unwrap(),
@@ -142,7 +142,7 @@ impl Device<None> {
 
         unsafe extern "C" fn on_produce_handler(
             transport: *mut MscTransport,
-            user_ptr: MscUserPtr,
+            user_ptr: *mut c_void,
             promise_id: i64,
             kind: MscMediaKind,
             rtp_parameters: *const c_char,
@@ -151,12 +151,13 @@ impl Device<None> {
             let rtp_parameters: RtpParameters =
                 serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes()).unwrap();
 
-            let inner = user_ptr.cast_mut::<Inner>();
+            let inner = &mut *(user_ptr as *mut Inner);
             let producer_id = inner.signaling.on_produce(
                 transport_id.to_str().unwrap(),
+                #[allow(non_upper_case_globals)]
                 match kind {
-                    MSC_MEDIA_KIND_AUDIO => MediaKind::Audio,
-                    MSC_MEDIA_KIND_VIDEO => MediaKind::Video,
+                    MscMediaKind_Audio => MediaKind::Audio,
+                    MscMediaKind_Video => MediaKind::Video,
                     _ => unreachable!(),
                 },
                 &rtp_parameters,
@@ -168,9 +169,12 @@ impl Device<None> {
 
         unsafe {
             msc_set_user_ptr(device, &*inner as *const Inner as *mut c_void);
-            msc_set_on_connect_handler(device, on_connect_handler);
-            msc_set_on_connection_state_change_handler(device, on_connection_state_change_handler);
-            msc_set_on_produce_handler(device, on_produce_handler);
+            msc_set_on_connect_handler(device, Some(on_connect_handler));
+            msc_set_on_connection_state_change_handler(
+                device,
+                Some(on_connection_state_change_handler),
+            );
+            msc_set_on_produce_handler(device, Some(on_produce_handler));
         }
 
         Device {
@@ -349,12 +353,12 @@ impl Device<Receiver> {
                 self.inner.recv_transport.get(),
                 id.as_ptr(),
                 producer_id.as_ptr(),
-                MSC_MEDIA_KIND_AUDIO,
+                MediaKind::Audio as u32,
                 rtp_parameters.as_ptr(),
             )
         };
 
-        unsafe extern "C" fn on_audio_data_handler<F>(ctx: MscUserPtr, audio_data: MscAudioData)
+        unsafe extern "C" fn on_audio_data_handler<F>(ctx: *mut c_void, audio_data: MscAudioData)
         where
             F: FnMut(AudioData) + 'static,
         {
@@ -369,7 +373,7 @@ impl Device<Receiver> {
                 )
             };
 
-            ctx.cast_mut::<F>()(AudioData {
+            (*(ctx as *mut F))(AudioData {
                 data: data,
                 bits_per_sample: audio_data.bits_per_sample as _,
                 sample_rate: audio_data.sample_rate as _,
@@ -383,10 +387,9 @@ impl Device<Receiver> {
 
         let sink = unsafe {
             msc_add_audio_sink(
-                self.inner.device,
                 consumer,
                 on_audio_data.as_ref() as *const F as *mut c_void,
-                on_audio_data_handler::<F>,
+                Some(on_audio_data_handler::<F>),
             )
         };
 
@@ -432,12 +435,12 @@ impl Device<Receiver> {
                 self.inner.recv_transport.get(),
                 id.as_ptr(),
                 producer_id.as_ptr(),
-                MSC_MEDIA_KIND_AUDIO,
+                MediaKind::Video as u32,
                 rtp_parameters.as_ptr(),
             )
         };
 
-        unsafe extern "C" fn on_video_frame_handler<F>(ctx: MscUserPtr, video_frame: MscVideoFrame)
+        unsafe extern "C" fn on_video_frame_handler<F>(ctx: *mut c_void, video_frame: MscVideoFrame)
         where
             F: FnMut(VideoFrame) + 'static,
         {
@@ -448,7 +451,7 @@ impl Device<Receiver> {
                 )
             };
 
-            ctx.cast_mut::<F>()(VideoFrame {
+            (*(ctx as *mut F))(VideoFrame {
                 data: data,
                 width: video_frame.width,
                 height: video_frame.height,
@@ -460,10 +463,9 @@ impl Device<Receiver> {
 
         let sink = unsafe {
             msc_add_video_sink(
-                self.inner.device,
                 consumer,
                 on_video_frame.as_ref() as *const F as *mut c_void,
-                on_video_frame_handler::<F>,
+                Some(on_video_frame_handler::<F>),
             )
         };
 
@@ -488,7 +490,7 @@ unsafe impl Send for AudioSink {}
 impl Drop for AudioSink {
     fn drop(&mut self) {
         unsafe {
-            msc_remove_audio_sink(self.device.device, self.consumer, self.sink);
+            msc_remove_audio_sink(self.consumer, self.sink);
             msc_free_consumer(self.consumer);
         }
     }
@@ -506,7 +508,7 @@ unsafe impl Send for VideoSink {}
 impl Drop for VideoSink {
     fn drop(&mut self) {
         unsafe {
-            msc_remove_video_sink(self.device.device, self.consumer, self.sink);
+            msc_remove_video_sink(self.consumer, self.sink);
             msc_free_consumer(self.consumer);
         }
     }

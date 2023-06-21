@@ -456,6 +456,16 @@ MscProducer* msc_create_producer(
     //    };
 }
 
+void msc_free_producer(MscProducer* in_producer) noexcept
+{
+    println("delete Producer");
+
+    auto* producer = reinterpret_cast<mediasoupclient::Producer*>(in_producer);
+    producer->Close();
+
+    delete producer;
+}
+
 void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame) noexcept
 {
     println("Producer::supply_video()");

@@ -21,9 +21,9 @@ set_source_files_properties(${SOURCE_FILES}
 add_library(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
-    src/lib.h
-    src/lib.cpp
-    src/peer_connection_factory.cpp
+    msc/lib.h
+    msc/lib.cpp
+    msc/peer_connection_factory.cpp
 )
 
 add_subdirectory(deps/fmt)

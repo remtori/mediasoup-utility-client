@@ -29,11 +29,12 @@ pub struct RtpCapabilities {
     pub header_extensions: Vec<RtpHeaderExtension>,
 }
 
+#[repr(u32)]
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaKind {
-    Audio = ffi::MSC_MEDIA_KIND_AUDIO as isize,
-    Video = ffi::MSC_MEDIA_KIND_VIDEO as isize,
+    Audio = ffi::MscMediaKind_Audio,
+    Video = ffi::MscMediaKind_Video,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
