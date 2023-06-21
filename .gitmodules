@@ -2,3 +2,6 @@
 	path = deps/libmediasoupclient
 	url = https://github.com/versatica/libmediasoupclient
 	branch = m112
+[submodule "deps/fmt"]
+	path = deps/fmt
+	url = https://github.com/fmtlib/fmt

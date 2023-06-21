@@ -9,7 +9,5 @@ BreakConstructorInitializers: BeforeComma
 IndentPPDirectives: AfterHash
 BreakBeforeBraces: Custom
 BraceWrapping:
-  AfterFunction: true
+    AfterFunction: true
 NamespaceIndentation: None
-RequiresClausePosition: WithFollowing
-IndentRequiresClause: false

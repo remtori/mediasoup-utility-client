@@ -1,11 +1,11 @@
 #pragma once
 
 #ifdef GEN_BINDINGS
-#include <stdbool.h>
-#define EXPORT
+#    include <stdbool.h>
+#    define EXPORT
 #else
-#include <stdint.h>
-#define EXPORT __attribute__((visibility("default")))
+#    include <stdint.h>
+#    define EXPORT __attribute__((visibility("default")))
 #endif
 
 #ifdef __cplusplus
@@ -59,60 +59,63 @@ typedef struct MscAudioData {
     int64_t absolute_capture_timestamp_ms;
 } MscAudioData;
 
-EXPORT void msc_initialize();
-EXPORT void msc_cleanup();
+typedef void (*WriteLog)(const char*, int);
 
-EXPORT const char* msc_version();
-EXPORT void msc_free_string(const char*);
+EXPORT void msc_initialize(WriteLog) noexcept;
+EXPORT void msc_cleanup() noexcept;
 
-EXPORT MscDevice* msc_alloc_device();
-EXPORT void msc_free_device(MscDevice*);
+EXPORT const char* msc_version() noexcept;
+EXPORT void msc_free_string(const char*) noexcept;
 
-EXPORT const char* msc_get_rtp_capabilities(MscDevice*);
-EXPORT bool msc_is_loaded(MscDevice*);
-EXPORT bool msc_load(MscDevice*, const char* router_rtp_capabilities);
-EXPORT bool msc_can_produce(MscDevice*, MscMediaKind kind);
+EXPORT MscDevice* msc_alloc_device() noexcept;
+EXPORT void msc_free_device(MscDevice*) noexcept;
+
+EXPORT const char* msc_get_rtp_capabilities(MscDevice*) noexcept;
+EXPORT bool msc_is_loaded(MscDevice*) noexcept;
+EXPORT bool msc_load(MscDevice*, const char* router_rtp_capabilities) noexcept;
+EXPORT bool msc_can_produce(MscDevice*, MscMediaKind kind) noexcept;
 
 typedef void (*OnConnect)(::MscTransport* transport, void* user_ptr, const char* dtls_parameters);
 typedef void (*OnConnectionStateChange)(::MscTransport* transport, void* user_ptr, const char* connection_state);
 typedef void (*OnProduce)(::MscTransport* transport, void* user_ptr, int64_t promise_id, MscMediaKind kind, const char* rtp_parameters);
 
-EXPORT void msc_set_user_ptr(MscDevice*, void*);
-EXPORT void msc_set_on_connect_handler(MscDevice*, OnConnect handler);
-EXPORT void msc_set_on_connection_state_change_handler(MscDevice*, OnConnectionStateChange handler);
-EXPORT void msc_set_on_produce_handler(MscDevice*, OnProduce handler);
+EXPORT void msc_set_user_ptr(MscDevice*, void*) noexcept;
+EXPORT void msc_set_on_connect_handler(MscDevice*, OnConnect handler) noexcept;
+EXPORT void msc_set_on_connection_state_change_handler(MscDevice*, OnConnectionStateChange handler) noexcept;
+EXPORT void msc_set_on_produce_handler(MscDevice*, OnProduce handler) noexcept;
 
-EXPORT void msc_fulfill_producer_id(MscDevice*, int64_t promise_id, const char* producer_id);
+EXPORT void msc_fulfill_producer_id(MscDevice*, int64_t promise_id, const char* producer_id) noexcept;
+
+EXPORT const char* msc_transport_get_id(MscTransport*) noexcept;
 
 EXPORT MscTransport* msc_create_send_transport(
-	MscDevice*,
-	const char* id,
-	const char* ice_parameters,
-	const char* ice_candidates,
-	const char* dtls_parameters
-);
+    MscDevice*,
+    const char* id,
+    const char* ice_parameters,
+    const char* ice_candidates,
+    const char* dtls_parameters) noexcept;
 
 EXPORT MscTransport* msc_create_recv_transport(
-	MscDevice*,
-	const char* id,
-	const char* ice_parameters,
-	const char* ice_candidates,
-	const char* dtls_parameters
-);
+    MscDevice*,
+    const char* id,
+    const char* ice_parameters,
+    const char* ice_candidates,
+    const char* dtls_parameters) noexcept;
 
-EXPORT MscProducer* msc_create_producer(MscDevice*, MscTransport*, int encoding_layers, const char* codec_options, const char* codec);
-EXPORT void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame);
-EXPORT void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData);
+EXPORT MscProducer* msc_create_producer(MscDevice*, MscTransport*, int encoding_layers, const char* codec_options, const char* codec) noexcept;
+EXPORT void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame) noexcept;
+EXPORT void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData) noexcept;
 
-EXPORT MscConsumer* msc_create_consumer(MscDevice*, MscTransport*, const char* id, const char* producer_id, MscMediaKind kind, const char* rtp_parameters);
+EXPORT MscConsumer* msc_create_consumer(MscDevice*, MscTransport*, const char* id, const char* producer_id, MscMediaKind kind, const char* rtp_parameters) noexcept;
+EXPORT void msc_free_consumer(MscConsumer*) noexcept;
 
-typedef void (*OnVideoFrame)(MscVideoFrame);
-typedef void (*OnAudioData)(MscAudioData);
+typedef void (*OnVideoFrame)(void*, MscVideoFrame);
+typedef void (*OnAudioData)(void*, MscAudioData);
 
-EXPORT MscConsumerSink* msc_add_video_sink(MscConsumer*, OnVideoFrame);
-EXPORT MscConsumerSink* msc_add_audio_sink(MscConsumer*, OnAudioData);
-EXPORT void msc_remove_video_sink(MscConsumer*, MscConsumerSink*);
-EXPORT void msc_remove_audio_sink(MscConsumer*, MscConsumerSink*);
+EXPORT MscConsumerSink* msc_add_video_sink(MscConsumer*, void* user_ptr, OnVideoFrame) noexcept;
+EXPORT MscConsumerSink* msc_add_audio_sink(MscConsumer*, void* user_ptr, OnAudioData) noexcept;
+EXPORT void msc_remove_video_sink(MscConsumer*, MscConsumerSink*) noexcept;
+EXPORT void msc_remove_audio_sink(MscConsumer*, MscConsumerSink*) noexcept;
 
 #ifdef __cplusplus
 };

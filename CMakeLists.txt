@@ -23,13 +23,14 @@ add_library(${PROJECT_NAME} ${SOURCES})
 target_sources(${PROJECT_NAME} PRIVATE
     src/lib.h
     src/lib.cpp
+    src/peer_connection_factory.cpp
 )
 
-add_subdirectory(
-    deps/libmediasoupclient
-)
+add_subdirectory(deps/fmt)
+add_subdirectory(deps/libmediasoupclient)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
+    deps/fmt/include
     deps/libmediasoupclient/include
     deps/libmediasoupclient/deps/libsdptransform/include
     deps/webrtc/include
@@ -37,6 +38,16 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     deps/webrtc/include/third_party/libyuv/include
 )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    fmt::fmt
     mediasoupclient
+)
+
+target_compile_definitions(${PROJECT_NAME} PUBLIC
+	$<$<NOT:$<PLATFORM_ID:Windows>>:WEBRTC_POSIX>
+	$<$<PLATFORM_ID:Windows>:WEBRTC_WIN>
+	$<$<PLATFORM_ID:Windows>:NOMINMAX>
+	$<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
+	$<$<PLATFORM_ID:Darwin>:WEBRTC_MAC>
+    NDEBUG
 )

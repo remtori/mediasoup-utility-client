@@ -49,31 +49,45 @@ pub struct MscAudioData {
     pub absolute_capture_timestamp_ms: i64,
 }
 
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct MscUserPtr(pub *mut c_void);
+
+unsafe impl Send for MscUserPtr {}
+
+impl MscUserPtr {
+    pub(crate) unsafe fn cast_mut<T>(&self) -> &mut T {
+        unsafe { &mut *(self.0 as *mut T) }
+    }
+}
+
+pub type WriteLog = unsafe extern "C" fn(str: *const c_char, length: c_int);
+
 pub type OnConnect = unsafe extern "C" fn(
     transport: *mut MscTransport,
-    user_ptr: *mut c_void,
+    user_ptr: MscUserPtr,
     dtls_parameters: *const c_char,
 );
 
 pub type OnConnectionStateChange = unsafe extern "C" fn(
     transport: *mut MscTransport,
-    user_ptr: *mut c_void,
+    user_ptr: MscUserPtr,
     connection_state: *const c_char,
 );
 
 pub type OnProduce = unsafe extern "C" fn(
     transport: *mut MscTransport,
-    user_ptr: *mut c_void,
+    user_ptr: MscUserPtr,
     promise_id: i64,
     kind: MscMediaKind,
     rtp_parameters: *const c_char,
 );
 
-pub type OnVideoFrame = unsafe extern "C" fn(this: MscVideoFrame);
-pub type OnAudioData = unsafe extern "C" fn(this: MscAudioData);
+pub type OnVideoFrame = unsafe extern "C" fn(ctx: MscUserPtr, data: MscVideoFrame);
+pub type OnAudioData = unsafe extern "C" fn(ctx: MscUserPtr, data: MscAudioData);
 
 extern "C" {
-    pub fn msc_initialize();
+    pub fn msc_initialize(write_fn: WriteLog);
     pub fn msc_cleanup();
 
     pub fn msc_version() -> *const c_char;
@@ -100,6 +114,8 @@ extern "C" {
         promise_id: i64,
         producer_id: *const c_char,
     );
+
+    pub fn msc_transport_get_id(transport: *mut MscTransport) -> *const c_char;
 
     pub fn msc_create_send_transport(
         this: *mut MscDevice,
@@ -134,21 +150,29 @@ extern "C" {
         kind: MscMediaKind,
         rtp_parameters: *const c_char,
     ) -> *mut MscConsumer;
+
+    pub fn msc_free_consumer(consumer: *mut MscConsumer);
+
     pub fn msc_add_video_sink(
         this: *mut MscDevice,
         consumer: *mut MscConsumer,
+        ctx: *mut c_void,
         handler: OnVideoFrame,
     ) -> *mut MscConsumerSink;
+
     pub fn msc_add_audio_sink(
         this: *mut MscDevice,
         consumer: *mut MscConsumer,
+        ctx: *mut c_void,
         handler: OnAudioData,
     ) -> *mut MscConsumerSink;
+
     pub fn msc_remove_video_sink(
         this: *mut MscDevice,
         consumer: *mut MscConsumer,
         handler: *mut MscConsumerSink,
     );
+
     pub fn msc_remove_audio_sink(
         this: *mut MscDevice,
         consumer: *mut MscConsumer,

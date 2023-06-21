@@ -4,6 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/src",
+                "${workspaceFolder}/deps/fmt/include",
                 "${workspaceFolder}/deps/libmediasoupclient/include",
                 "${workspaceFolder}/deps/libmediasoupclient/deps/libsdptransform/include",
                 "${workspaceFolder}/deps/webrtc/include",

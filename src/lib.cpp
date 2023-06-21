@@ -1,17 +1,31 @@
 #include "lib.h"
 
+#include <string_view>
 #include <unordered_map>
+
+#include <fmt/core.h>
 #include <mediasoupclient.hpp>
 
-#include <rtc_base/ssl_adapter.h>
-#include <rtc_base/byte_order.h>
-#include <api/audio_codecs/builtin_audio_decoder_factory.h>
-#include <api/audio_codecs/builtin_audio_encoder_factory.h>
-#include <api/create_peerconnection_factory.h>
-#include <api/video_codecs/builtin_video_decoder_factory.h>
-#include <api/video_codecs/builtin_video_encoder_factory.h>
-#include <system_wrappers/include/clock.h>
 #include <libyuv.h>
+#include <rtc_base/byte_order.h>
+#include <rtc_base/ssl_adapter.h>
+#include <system_wrappers/include/clock.h>
+
+static WriteLog s_write_fn = nullptr;
+
+namespace {
+
+template<typename... T>
+inline void println(::fmt::format_string<T...> fmt, T&&... args)
+{
+    if (!s_write_fn)
+        return;
+
+    std::string string = ::fmt::vformat(fmt, ::fmt::make_format_args(args...));
+    s_write_fn(string.c_str(), string.size());
+}
+
+}
 
 namespace impl {
 
@@ -34,8 +48,9 @@ public:
         it->second.set_value(producer_id);
         m_map_promise_producer_id.erase(it);
     }
+
 public:
-	void* user_ptr { nullptr };
+    void* user_ptr { nullptr };
     ::OnConnect on_connect_handler { nullptr };
     ::OnConnectionStateChange on_connection_state_change_handler { nullptr };
     ::OnProduce on_produce_handler { nullptr };
@@ -43,6 +58,7 @@ public:
     std::unique_ptr<mediasoupclient::SendTransport> send_transport { nullptr };
     std::unique_ptr<mediasoupclient::RecvTransport> recv_transport { nullptr };
     mediasoupclient::Device device {};
+
 private:
     std::unordered_map<int64_t, std::promise<std::string>> m_map_promise_producer_id {};
     std::atomic_int64_t m_map_id_gen {};
@@ -54,12 +70,13 @@ std::future<void> Device::OnConnect(mediasoupclient::Transport* transport, const
         auto str = dtlsParameters.dump();
         on_connect_handler(
             reinterpret_cast<::MscTransport*>(transport),
-			user_ptr,
-            str.c_str()
-        );
+            user_ptr,
+            str.c_str());
     }
 
-    return {};
+    std::promise<void> ret;
+    ret.set_value();
+    return ret.get_future();
 }
 
 void Device::OnConnectionStateChange(mediasoupclient::Transport* transport, const std::string& connectionState)
@@ -67,9 +84,8 @@ void Device::OnConnectionStateChange(mediasoupclient::Transport* transport, cons
     if (on_connection_state_change_handler) {
         on_connection_state_change_handler(
             reinterpret_cast<::MscTransport*>(transport),
-			user_ptr,
-            connectionState.c_str()
-        );
+            user_ptr,
+            connectionState.c_str());
     }
 }
 
@@ -84,7 +100,7 @@ std::future<std::string> Device::OnProduce(mediasoupclient::SendTransport* trans
         auto str = rtpParameters.dump();
         on_produce_handler(
             reinterpret_cast<::MscTransport*>(transport),
-			user_ptr,
+            user_ptr,
             promise_id,
             kind == "audio" ? ::MscMediaKind::Audio : ::MscMediaKind::Video,
             str.c_str());
@@ -105,7 +121,7 @@ std::future<std::string> Device::OnProduceData(mediasoupclient::SendTransport*, 
 
 void Device::OnTransportClose(mediasoupclient::Producer* producer)
 {
-	// TODO
+    // TODO
 }
 
 void Device::OnTransportClose(mediasoupclient::Consumer* consumer)
@@ -113,11 +129,11 @@ void Device::OnTransportClose(mediasoupclient::Consumer* consumer)
     // TODO
 }
 
-class AudioConsumer : public webrtc::AudioTrackSinkInterface
-{
+class AudioConsumer : public webrtc::AudioTrackSinkInterface {
 public:
-    AudioConsumer(OnAudioData on_audio_data)
-        : m_on_audio_data(on_audio_data)
+    AudioConsumer(void* user_ptr, OnAudioData on_audio_data)
+        : m_user_ptr(user_ptr)
+        , m_on_audio_data(on_audio_data)
     {
     }
 
@@ -141,17 +157,19 @@ public:
             .absolute_capture_timestamp_ms = absolute_capture_timestamp_ms.value_or(rtc::TimeMillis()),
         };
 
-        m_on_audio_data(audio_data);
+        m_on_audio_data(m_user_ptr, audio_data);
     }
+
 private:
+    void* m_user_ptr;
     OnAudioData m_on_audio_data;
 };
 
-class VideoConsumer : public rtc::VideoSinkInterface<webrtc::VideoFrame>
-{
+class VideoConsumer : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
 public:
-    VideoConsumer(OnVideoFrame on_video_data)
-        : m_on_video_frame(on_video_data)
+    VideoConsumer(void* user_ptr, OnVideoFrame on_video_data)
+        : m_user_ptr(user_ptr)
+        , m_on_video_frame(on_video_data)
     {
     }
 
@@ -176,28 +194,45 @@ public:
             .timestamp = frame.timestamp()
         };
 
-        m_on_video_frame(video_frame);
+        m_on_video_frame(m_user_ptr, video_frame);
     }
+
 private:
+    void* m_user_ptr;
     OnVideoFrame m_on_video_frame;
     std::vector<uint8_t> m_data {};
 };
 
-class AudioProducer : public webrtc::AudioSourceInterface
-{
+class AudioProducer : public webrtc::AudioSourceInterface {
 public:
 private:
 };
 
-class VideoProducer : public webrtc::VideoTrackSourceInterface
-{
+class VideoProducer : public webrtc::VideoTrackSourceInterface {
 public:
 private:
 };
+
+class FFIMediasoupLogHandler : public mediasoupclient::Logger::LogHandlerInterface {
+public:
+    void OnLog(mediasoupclient::Logger::LogLevel level, char* payload, size_t len) override
+    {
+        println("[MS]({}): {}", static_cast<int>(level), std::string_view(payload, len));
+    }
+};
+
+class FFIWebrtcLogSink : public rtc::LogSink {
+    void OnLogMessage(const std::string& message) override
+    {
+        println("[RTC] {}", message);
+    }
+};
+
+webrtc::PeerConnectionFactoryInterface* peer_connection_factory();
 
 }
 
-static const char* alloc_string(const std::string& str)
+static const char* alloc_string(const std::string& str) noexcept
 {
     char* ret = new char[str.size() + 1];
     std::memcpy(ret, str.c_str(), str.size() + 1);
@@ -206,109 +241,143 @@ static const char* alloc_string(const std::string& str)
 
 extern "C" {
 
-void msc_free_string(const char* str)
+void msc_free_string(const char* str) noexcept
 {
     delete[] str;
 }
 
-void msc_initialize()
+void msc_initialize(WriteLog write_fn) noexcept
 {
+    s_write_fn = write_fn;
+
+    println("initialize() start");
+
     rtc::InitializeSSL();
     rtc::InitRandom(static_cast<int>(rtc::TimeMillis()));
+    // rtc::LogMessage::LogToDebug(rtc::LS_INFO);
+    // rtc::LogMessage::AddLogToStream(new impl::FFIWebrtcLogSink(), rtc::LS_INFO);
+
+    mediasoupclient::Logger::SetLogLevel(mediasoupclient::Logger::LogLevel::LOG_WARN);
+    mediasoupclient::Logger::SetHandler(new impl::FFIMediasoupLogHandler());
+
+    impl::peer_connection_factory();
+
+    println("initialize() end");
 }
 
-void msc_cleanup()
+void msc_cleanup() noexcept
 {
+    println("cleanup()");
+
     rtc::CleanupSSL();
 }
 
-const char* msc_version()
+const char* msc_version() noexcept
 {
+    println("version()");
     return alloc_string(mediasoupclient::Version());
 }
 
-MscDevice* msc_alloc_device()
+MscDevice* msc_alloc_device() noexcept
 {
+    println("new Device()");
     auto device = new (std::nothrow) impl::Device();
     return reinterpret_cast<MscDevice*>(device);
 }
 
-void msc_free_device(MscDevice* device)
+void msc_free_device(MscDevice* device) noexcept
 {
+    println("delete Device");
     delete reinterpret_cast<impl::Device*>(device);
 }
 
-const char* msc_get_rtp_capabilities(MscDevice* in_device)
+const char* msc_get_rtp_capabilities(MscDevice* in_device) noexcept
 {
+    println("Device::get_rtp_capabilities");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
-    return alloc_string(device->device.GetRtpCapabilities());
+    return alloc_string(device->device.GetRtpCapabilities().dump());
 }
 
-bool msc_is_loaded(MscDevice* in_device)
+bool msc_is_loaded(MscDevice* in_device) noexcept
 {
+    println("Device::is_loaded()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     return device->device.IsLoaded();
 }
 
-bool msc_load(MscDevice* in_device, const char* router_rtp_capabilities)
+bool msc_load(MscDevice* in_device, const char* router_rtp_capabilities) noexcept
 {
+    println("Device::load()");
+
+    mediasoupclient::PeerConnection::Options options;
+    options.factory = impl::peer_connection_factory();
+
     auto* device = reinterpret_cast<impl::Device*>(in_device);
-    try {
-        device->device.Load(nlohmann::json::parse(router_rtp_capabilities));
-        return true;
-    } catch (const std::exception& e) {
-        return false;
-    }
+    device->device.Load(nlohmann::json::parse(router_rtp_capabilities), &options);
+    return true;
 }
 
-bool msc_can_produce(MscDevice* in_device, MscMediaKind kind)
+bool msc_can_produce(MscDevice* in_device, MscMediaKind kind) noexcept
 {
+    println("Device::can_produce()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     return device->device.CanProduce(kind == MscMediaKind::Audio ? "audio" : "video");
 }
 
-void msc_set_user_ptr(MscDevice* in_device, void* user_ptr)
+void msc_set_user_ptr(MscDevice* in_device, void* user_ptr) noexcept
 {
-	auto* device = reinterpret_cast<impl::Device*>(in_device);
-	device->user_ptr = user_ptr;
+    println("Device::set_user_ptr()");
+    auto* device = reinterpret_cast<impl::Device*>(in_device);
+    device->user_ptr = user_ptr;
 }
 
-void msc_set_on_connect_handler(MscDevice* in_device, OnConnect handler)
+void msc_set_on_connect_handler(MscDevice* in_device, OnConnect handler) noexcept
 {
+    println("Device::set_on_connect_handler()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_connect_handler = handler;
 }
 
-void msc_set_on_connection_state_change_handler(MscDevice* in_device, OnConnectionStateChange handler)
+void msc_set_on_connection_state_change_handler(MscDevice* in_device, OnConnectionStateChange handler) noexcept
 {
+    println("Device::set_on_connection_state_change_handler()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_connection_state_change_handler = handler;
 }
 
-void msc_set_on_produce_handler(MscDevice* in_device, OnProduce handler)
+void msc_set_on_produce_handler(MscDevice* in_device, OnProduce handler) noexcept
 {
+    println("Device::set_on_produce_handler()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->on_produce_handler = handler;
 }
 
-void msc_fulfill_producer_id(MscDevice* in_device, int64_t promise_id, const char* producer_id)
+void msc_fulfill_producer_id(MscDevice* in_device, int64_t promise_id, const char* producer_id) noexcept
 {
+    println("Device::fulfill_producer_id()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     device->fulfill_producer_id(promise_id, producer_id);
 }
 
-MscTransport* msc_create_send_transport(
-        MscDevice* in_device,
-        const char* id,
-        const char* ice_parameters,
-        const char* ice_candidates,
-        const char* dtls_parameters
-)
+const char* msc_transport_get_id(MscTransport* in_transport) noexcept
 {
+    println("Transport::get_id()");
+    auto* transport = reinterpret_cast<mediasoupclient::Transport*>(in_transport);
+    return alloc_string(transport->GetId());
+}
+
+MscTransport* msc_create_send_transport(
+    MscDevice* in_device,
+    const char* id,
+    const char* ice_parameters,
+    const char* ice_candidates,
+    const char* dtls_parameters) noexcept
+{
+    println("Device::create_send_transport()");
     auto* device = reinterpret_cast<impl::Device*>(in_device);
 
     mediasoupclient::PeerConnection::Options options;
-    options.factory = nullptr;
+    options.factory = impl::peer_connection_factory();
 
     device->send_transport = std::unique_ptr<mediasoupclient::SendTransport>(
         device->device.CreateSendTransport(
@@ -317,24 +386,24 @@ MscTransport* msc_create_send_transport(
             nlohmann::json::parse(ice_parameters),
             nlohmann::json::parse(ice_candidates),
             nlohmann::json::parse(dtls_parameters),
-            &options)
-    );
+            &options));
 
     return reinterpret_cast<::MscTransport*>(device->send_transport.get());
 }
 
 MscTransport* msc_create_recv_transport(
-        MscDevice* in_device,
-        const char* id,
-        const char* ice_parameters,
-        const char* ice_candidates,
-        const char* dtls_parameters
-)
+    MscDevice* in_device,
+    const char* id,
+    const char* ice_parameters,
+    const char* ice_candidates,
+    const char* dtls_parameters) noexcept
 {
+    println("Device::create_recv_transport()");
+
     auto* device = reinterpret_cast<impl::Device*>(in_device);
 
     mediasoupclient::PeerConnection::Options options;
-    options.factory = nullptr;
+    options.factory = impl::peer_connection_factory();
 
     device->recv_transport = std::unique_ptr<mediasoupclient::RecvTransport>(
         device->device.CreateRecvTransport(
@@ -343,20 +412,22 @@ MscTransport* msc_create_recv_transport(
             nlohmann::json::parse(ice_parameters),
             nlohmann::json::parse(ice_candidates),
             nlohmann::json::parse(dtls_parameters),
-            &options)
-    );
+            nullptr,
+            &options,
+            nlohmann::json::object()));
 
-    return reinterpret_cast<::MscTransport*>(device->send_transport.get());
+    return reinterpret_cast<::MscTransport*>(device->recv_transport.get());
 }
 
 MscProducer* msc_create_producer(
-        MscDevice* in_device,
-        MscTransport* in_transport,
-        int encoding_layers,
-        const char* codec_options,
-        const char* codec
-)
+    MscDevice* in_device,
+    MscTransport* in_transport,
+    int encoding_layers,
+    const char* codec_options,
+    const char* codec) noexcept
 {
+    println("Transport::create_producer()");
+
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     auto* send_transport = reinterpret_cast<mediasoupclient::SendTransport*>(in_transport);
 
@@ -370,45 +441,47 @@ MscProducer* msc_create_producer(
 
     // TODO
     return nullptr;
-//    auto* producer = send_transport->Produce(
-//        device,
-//        nullptr,
-//        &encodings,
-//        &parsed_codec_options,
-//        &parsed_codec,
-//        nlohmann::json::object()
-//    );
-//
-//    return new (std::nothrow) ::Producer {
-//        .producer = producer,
-//        .source = source,
-//    };
+    //    auto* producer = send_transport->Produce(
+    //        device,
+    //        nullptr,
+    //        &encodings,
+    //        &parsed_codec_options,
+    //        &parsed_codec,
+    //        nlohmann::json::object()
+    //    );
+    //
+    //    return new (std::nothrow) ::Producer {
+    //        .producer = producer,
+    //        .source = source,
+    //    };
 }
 
-void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame)
+void msc_supply_video(MscDevice*, MscProducer*, MscVideoFrame) noexcept
 {
+    println("Producer::supply_video()");
     // TODO
 }
 
-void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData)
+void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData) noexcept
 {
+    println("Producer::supply_audio()");
     // TODO
 }
 
 MscConsumer* msc_create_consumer(
-        MscDevice* in_device,
-        MscTransport* in_transport,
-        const char* id,
-        const char* producer_id,
-        MscMediaKind kind,
-        const char* rtp_parameters
-)
+    MscDevice* in_device,
+    MscTransport* in_transport,
+    const char* id,
+    const char* producer_id,
+    MscMediaKind kind,
+    const char* rtp_parameters) noexcept
 {
+    println("Transport::create_consumer()");
+
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     auto* recv_transport = reinterpret_cast<mediasoupclient::RecvTransport*>(in_transport);
 
     auto parsed_rtp_parameters = nlohmann::json::parse(rtp_parameters);
-
     auto* consumer = recv_transport->Consume(
         device,
         id,
@@ -419,28 +492,44 @@ MscConsumer* msc_create_consumer(
     return reinterpret_cast<MscConsumer*>(consumer);
 }
 
-MscConsumerSink* msc_add_video_sink(MscConsumer* in_consumer, OnVideoFrame on_video_frame)
+void msc_free_consumer(MscConsumer* in_consumer) noexcept
 {
+    println("delete Consumer");
+
+    auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
+    consumer->Close();
+
+    delete consumer;
+}
+
+MscConsumerSink* msc_add_video_sink(MscConsumer* in_consumer, void* user_ptr, OnVideoFrame on_video_frame) noexcept
+{
+    println("Consumer::add_video_sink()");
+
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
 
-    auto* sink = new impl::VideoConsumer(on_video_frame);
+    auto* sink = new impl::VideoConsumer(user_ptr, on_video_frame);
     dynamic_cast<webrtc::VideoTrackInterface*>(consumer->GetTrack())->AddOrUpdateSink(sink, {});
 
     return reinterpret_cast<MscConsumerSink*>(sink);
 }
 
-MscConsumerSink* msc_add_audio_sink(MscConsumer* in_consumer, OnAudioData on_audio_data)
+MscConsumerSink* msc_add_audio_sink(MscConsumer* in_consumer, void* user_ptr, OnAudioData on_audio_data) noexcept
 {
+    println("Consumer::add_audio_sink()");
+
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
 
-    auto* sink = new impl::AudioConsumer(on_audio_data);
+    auto* sink = new impl::AudioConsumer(user_ptr, on_audio_data);
     dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->AddSink(sink);
 
     return reinterpret_cast<MscConsumerSink*>(sink);
 }
 
-void msc_remove_video_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink)
+void msc_remove_video_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink) noexcept
 {
+    println("Consumer::remove_video_sink()");
+
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
     auto* sink = reinterpret_cast<impl::VideoConsumer*>(in_sink);
 
@@ -448,13 +537,14 @@ void msc_remove_video_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink)
     delete sink;
 }
 
-void msc_remove_audio_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink)
+void msc_remove_audio_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink) noexcept
 {
+    println("Consumer::remove_audio_sink()");
+
     auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
     auto* sink = reinterpret_cast<impl::AudioConsumer*>(in_sink);
 
     dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->RemoveSink(sink);
     delete sink;
 }
-
 }

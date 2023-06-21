@@ -1,19 +1,29 @@
 use std::{
+    cell::Cell,
     ffi::{CStr, CString},
+    marker::PhantomData,
     os::raw::{c_char, c_void},
+    sync::Arc,
 };
 
 pub use crate::types::*;
+use ffi::*;
 
 pub mod ffi;
 mod types;
 
 pub fn initialize() {
-    unsafe { ffi::msc_initialize() };
+    unsafe extern "C" fn print_fn(str: *const c_char, length: i32) {
+        let bytes = std::slice::from_raw_parts(str as *const u8, length as usize + 1);
+        let str = CStr::from_bytes_with_nul(bytes).unwrap();
+        println!("[MSC FFI] {}", str.to_string_lossy());
+    }
+
+    unsafe { msc_initialize(print_fn) };
 }
 
 pub fn cleanup() {
-    unsafe { ffi::msc_cleanup() };
+    unsafe { msc_cleanup() };
 }
 
 pub fn version() -> &'static str {
@@ -22,125 +32,482 @@ pub fn version() -> &'static str {
     static VERSION: OnceCell<String> = OnceCell::new();
 
     VERSION.get_or_init(|| {
-        let version = unsafe { CStr::from_ptr(ffi::msc_version()) };
+        let version = unsafe { CStr::from_ptr(msc_version()) };
         let out = version.to_string_lossy().to_string();
-        unsafe { ffi::msc_free_string(version.as_ptr()) };
+        unsafe { msc_free_string(version.as_ptr()) };
         out
     })
 }
 
-#[async_trait::async_trait]
-pub trait Signaling {
-    fn on_connect(&mut self, dtls_parameters: &DtlsParameters);
+pub trait Signaling: Send + Sync {
+    fn on_connect(&mut self, transport_id: &str, dtls_parameters: &DtlsParameters);
 
-    fn on_connection_state_change(&mut self, connection_state: &str);
+    fn on_connection_state_change(&mut self, transport_id: &str, connection_state: &str);
 
-    async fn on_produce(&mut self, kind: MediaKind, rtp_parameters: &RtpParameters) -> ProducerId;
+    fn on_produce(
+        &mut self,
+        transport_id: &str,
+        kind: MediaKind,
+        rtp_parameters: &RtpParameters,
+    ) -> ProducerId;
 }
 
-pub struct Device {
-    inner: Box<Inner>,
+pub struct None;
+pub struct Sender;
+pub struct Receiver;
+
+pub struct Device<State> {
+    inner: Arc<Inner>,
+    _state: PhantomData<State>,
 }
 
-struct Inner {
-    device: *mut ffi::MscDevice,
-    signaling: Box<dyn Signaling>,
-}
-
-impl Drop for Inner {
-    fn drop(&mut self) {
-        unsafe { ffi::msc_free_device(self.device) }
+impl<S> std::fmt::Debug for Device<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Device")
+            .field("inner", &self.inner)
+            .finish()
     }
 }
 
-impl Device {
-    pub fn new<T: 'static + Signaling>(signaling: T) -> Self {
+struct Inner {
+    device: *mut MscDevice,
+    send_transport: Cell<*mut MscTransport>,
+    recv_transport: Cell<*mut MscTransport>,
+    signaling: Box<dyn Signaling>,
+}
+
+impl std::fmt::Debug for Inner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Inner")
+            .field("device", &self.device)
+            .field("send_transport", &self.send_transport)
+            .field("recv_transport", &self.recv_transport)
+            .finish()
+    }
+}
+
+// unsafe impl Send for Inner {}
+// unsafe impl Sync for Inner {}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        unsafe { msc_free_device(self.device) }
+    }
+}
+
+impl Device<None> {
+    pub fn new<T: 'static + Signaling>(signaling: T) -> Device<None> {
         let signaling = Box::new(signaling);
         Self::new_from_boxed(signaling)
     }
 
-    pub fn new_from_boxed(signaling: Box<dyn Signaling>) -> Self {
-        let device = unsafe { ffi::msc_alloc_device() };
-        let mut inner = Box::new(Inner { device, signaling });
+    pub fn new_from_boxed(signaling: Box<dyn Signaling>) -> Device<None> {
+        let device = unsafe { msc_alloc_device() };
+        let inner = Arc::new(Inner {
+            device,
+            send_transport: Cell::new(std::ptr::null_mut()),
+            recv_transport: Cell::new(std::ptr::null_mut()),
+            signaling,
+        });
 
         unsafe extern "C" fn on_connect_handler(
-            _transport: *mut ffi::MscTransport,
-            user_ptr: *mut c_void,
+            transport: *mut MscTransport,
+            user_ptr: MscUserPtr,
             dtls_parameters: *const c_char,
         ) {
-            let inner = &mut *(user_ptr as *mut Inner);
+            let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
             let dtls_parameters: DtlsParameters =
                 serde_json::from_slice(CStr::from_ptr(dtls_parameters).to_bytes()).unwrap();
 
-            inner.signaling.on_connect(&dtls_parameters);
+            let inner = user_ptr.cast_mut::<Inner>();
+            inner
+                .signaling
+                .on_connect(transport_id.to_str().unwrap(), &dtls_parameters);
         }
 
         unsafe extern "C" fn on_connection_state_change_handler(
-            _transport: *mut ffi::MscTransport,
-            user_ptr: *mut c_void,
+            transport: *mut MscTransport,
+            user_ptr: MscUserPtr,
             connection_state: *const c_char,
         ) {
-            let inner = &mut *(user_ptr as *mut Inner);
+            let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
             let connection_state = CStr::from_ptr(connection_state);
 
-            inner
-                .signaling
-                .on_connection_state_change(connection_state.to_str().unwrap());
+            let inner = user_ptr.cast_mut::<Inner>();
+            inner.signaling.on_connection_state_change(
+                transport_id.to_str().unwrap(),
+                connection_state.to_str().unwrap(),
+            );
         }
 
         unsafe extern "C" fn on_produce_handler(
-            _transport: *mut ffi::MscTransport,
-            user_ptr: *mut c_void,
+            transport: *mut MscTransport,
+            user_ptr: MscUserPtr,
             promise_id: i64,
-            kind: ffi::MscMediaKind,
+            kind: MscMediaKind,
             rtp_parameters: *const c_char,
         ) {
-            // tokio::spawn(async move {
-            //     let inner = &mut *(user_ptr as *mut Inner);
-            //     let rtp_parameters: RtpParameters =
-            //         serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes()).unwrap();
+            let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
+            let rtp_parameters: RtpParameters =
+                serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes()).unwrap();
 
-            //     let producer_id = inner
-            //         .signaling
-            //         .on_produce(
-            //             match kind {
-            //                 ffi::MSC_MEDIA_KIND_AUDIO => MediaKind::Audio,
-            //                 ffi::MSC_MEDIA_KIND_VIDEO => MediaKind::Video,
-            //                 _ => unreachable!(),
-            //             },
-            //             &rtp_parameters,
-            //         )
-            //         .await;
+            let inner = user_ptr.cast_mut::<Inner>();
+            let producer_id = inner.signaling.on_produce(
+                transport_id.to_str().unwrap(),
+                match kind {
+                    MSC_MEDIA_KIND_AUDIO => MediaKind::Audio,
+                    MSC_MEDIA_KIND_VIDEO => MediaKind::Video,
+                    _ => unreachable!(),
+                },
+                &rtp_parameters,
+            );
 
-            //     let producer_id = CString::new(producer_id.0).unwrap();
-            //     ffi::msc_fulfill_producer_id(inner.device, promise_id, producer_id.as_ptr());
-            // });
+            let producer_id = CString::new(producer_id.0).unwrap();
+            msc_fulfill_producer_id(inner.device, promise_id, producer_id.as_ptr());
         }
 
         unsafe {
-            ffi::msc_set_user_ptr(device, &mut *inner as *mut Inner as *mut c_void);
-            ffi::msc_set_on_connect_handler(device, on_connect_handler);
-            ffi::msc_set_on_connection_state_change_handler(
-                device,
-                on_connection_state_change_handler,
-            );
-            ffi::msc_set_on_produce_handler(device, on_produce_handler);
+            msc_set_user_ptr(device, &*inner as *const Inner as *mut c_void);
+            msc_set_on_connect_handler(device, on_connect_handler);
+            msc_set_on_connection_state_change_handler(device, on_connection_state_change_handler);
+            msc_set_on_produce_handler(device, on_produce_handler);
         }
 
-        Self { inner }
+        Device {
+            inner,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<S> Device<S> {
+    pub fn load(&mut self, rtp_capabilities: &RtpCapabilities) {
+        let rtp_capabilities = serde_json::to_vec(rtp_capabilities).unwrap();
+        self.load_unchecked(rtp_capabilities)
     }
 
-    pub fn load(&mut self, rtp_capabilities: &RtpCapabilities) -> bool {
-        let rtp_capabilities = serde_json::to_vec(rtp_capabilities).unwrap();
-        let rtp_capabilities = CString::new(rtp_capabilities).unwrap();
-        unsafe { ffi::msc_load(self.inner.device, rtp_capabilities.as_ptr()) }
+    pub fn load_unchecked(&mut self, rtp_capabilities: impl Into<Vec<u8>>) {
+        let rtp_capabilities = CString::new(rtp_capabilities.into()).unwrap();
+        unsafe { msc_load(self.inner.device, rtp_capabilities.as_ptr()) };
     }
 
     pub fn is_loaded(&self) -> bool {
-        unsafe { ffi::msc_is_loaded(self.inner.device) }
+        unsafe { msc_is_loaded(self.inner.device) }
     }
 
     pub fn can_produce(&self, kind: MediaKind) -> bool {
-        unsafe { ffi::msc_can_produce(self.inner.device, kind as u32) }
+        unsafe { msc_can_produce(self.inner.device, kind as u32) }
+    }
+
+    pub fn rtp_capabilities(&self) -> RtpCapabilities {
+        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.inner.device)) };
+        let ret = serde_json::from_slice(caps.to_bytes()).unwrap();
+        unsafe { msc_free_string(caps.as_ptr()) };
+        ret
+    }
+
+    pub fn rtp_capabilities_unchecked(&self) -> Vec<u8> {
+        let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.inner.device)) };
+        let ret = caps.to_bytes().to_vec();
+        unsafe { msc_free_string(caps.as_ptr()) };
+        ret
+    }
+}
+
+impl Device<None> {
+    pub fn create_send_transport(
+        self,
+        transport_id: String,
+        ice_parameters: &IceParameters,
+        ice_candidates: &Vec<IceCandidate>,
+        dtls_parameters: &DtlsParameters,
+    ) -> Device<Sender> {
+        let ice_parameters = serde_json::to_string(ice_parameters).unwrap();
+        let ice_candidates = serde_json::to_string(ice_candidates).unwrap();
+        let dtls_parameters = serde_json::to_string(dtls_parameters).unwrap();
+
+        self.create_send_transport_unchecked(
+            transport_id,
+            ice_parameters,
+            ice_candidates,
+            dtls_parameters,
+        )
+    }
+
+    pub fn create_send_transport_unchecked(
+        self,
+        transport_id: impl Into<Vec<u8>>,
+        ice_parameters: impl Into<Vec<u8>>,
+        ice_candidates: impl Into<Vec<u8>>,
+        dtls_parameters: impl Into<Vec<u8>>,
+    ) -> Device<Sender> {
+        let transport_id = CString::new(transport_id).unwrap();
+        let ice_parameters = CString::new(ice_parameters).unwrap();
+        let ice_candidates = CString::new(ice_candidates).unwrap();
+        let dtls_parameters = CString::new(dtls_parameters).unwrap();
+
+        let transport = unsafe {
+            msc_create_send_transport(
+                self.inner.device,
+                transport_id.as_ptr(),
+                ice_parameters.as_ptr(),
+                ice_candidates.as_ptr(),
+                dtls_parameters.as_ptr(),
+            )
+        };
+
+        self.inner.send_transport.set(transport);
+
+        Device {
+            inner: self.inner,
+            _state: PhantomData,
+        }
+    }
+
+    pub fn create_recv_transport(
+        self,
+        transport_id: String,
+        ice_parameters: &IceParameters,
+        ice_candidates: &Vec<IceCandidate>,
+        dtls_parameters: &DtlsParameters,
+    ) -> Device<Receiver> {
+        let ice_parameters = serde_json::to_string(ice_parameters).unwrap();
+        let ice_candidates = serde_json::to_string(ice_candidates).unwrap();
+        let dtls_parameters = serde_json::to_string(dtls_parameters).unwrap();
+
+        self.create_recv_transport_unchecked(
+            transport_id,
+            ice_parameters,
+            ice_candidates,
+            dtls_parameters,
+        )
+    }
+
+    pub fn create_recv_transport_unchecked(
+        self,
+        transport_id: impl Into<Vec<u8>>,
+        ice_parameters: impl Into<Vec<u8>>,
+        ice_candidates: impl Into<Vec<u8>>,
+        dtls_parameters: impl Into<Vec<u8>>,
+    ) -> Device<Receiver> {
+        let transport_id = CString::new(transport_id).unwrap();
+        let ice_parameters = CString::new(ice_parameters).unwrap();
+        let ice_candidates = CString::new(ice_candidates).unwrap();
+        let dtls_parameters = CString::new(dtls_parameters).unwrap();
+
+        let transport = unsafe {
+            msc_create_recv_transport(
+                self.inner.device,
+                transport_id.as_ptr(),
+                ice_parameters.as_ptr(),
+                ice_candidates.as_ptr(),
+                dtls_parameters.as_ptr(),
+            )
+        };
+
+        self.inner.recv_transport.set(transport);
+
+        Device {
+            inner: self.inner,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl Device<Receiver> {
+    pub fn create_audio_consumer<F>(
+        &mut self,
+        id: String,
+        producer_id: String,
+        rtp_parameters: &RtpParameters,
+        on_audio_data: F,
+    ) -> AudioSink
+    where
+        F: (FnMut(AudioData)) + Send + 'static,
+    {
+        let rtp_parameters = serde_json::to_string(rtp_parameters).unwrap();
+        self.create_audio_consumer_unchecked(id, producer_id, rtp_parameters, on_audio_data)
+    }
+
+    pub fn create_audio_consumer_unchecked<F>(
+        &mut self,
+        id: impl Into<Vec<u8>>,
+        producer_id: impl Into<Vec<u8>>,
+        rtp_parameters: impl Into<Vec<u8>>,
+        on_audio_data: F,
+    ) -> AudioSink
+    where
+        F: (FnMut(AudioData)) + Send + 'static,
+    {
+        let id = CString::new(id).unwrap();
+        let producer_id = CString::new(producer_id).unwrap();
+        let rtp_parameters = CString::new(rtp_parameters).unwrap();
+
+        let consumer = unsafe {
+            msc_create_consumer(
+                self.inner.device,
+                self.inner.recv_transport.get(),
+                id.as_ptr(),
+                producer_id.as_ptr(),
+                MSC_MEDIA_KIND_AUDIO,
+                rtp_parameters.as_ptr(),
+            )
+        };
+
+        unsafe extern "C" fn on_audio_data_handler<F>(ctx: MscUserPtr, audio_data: MscAudioData)
+        where
+            F: FnMut(AudioData) + 'static,
+        {
+            let data = unsafe {
+                std::slice::from_raw_parts(
+                    audio_data.data as *mut u8,
+                    audio_data.number_of_frames as usize
+                        * audio_data.number_of_channels as usize
+                        * audio_data.sample_rate as usize
+                        * audio_data.bits_per_sample as usize
+                        / 8,
+                )
+            };
+
+            ctx.cast_mut::<F>()(AudioData {
+                data: data,
+                bits_per_sample: audio_data.bits_per_sample as _,
+                sample_rate: audio_data.sample_rate as _,
+                number_of_channels: audio_data.number_of_channels as _,
+                number_of_frames: audio_data.number_of_frames as _,
+                timestamp_ms: audio_data.absolute_capture_timestamp_ms as _,
+            });
+        }
+
+        let on_audio_data = Box::new(on_audio_data);
+
+        let sink = unsafe {
+            msc_add_audio_sink(
+                self.inner.device,
+                consumer,
+                on_audio_data.as_ref() as *const F as *mut c_void,
+                on_audio_data_handler::<F>,
+            )
+        };
+
+        AudioSink {
+            device: Arc::clone(&self.inner),
+            consumer,
+            sink,
+            _callback: on_audio_data,
+        }
+    }
+
+    pub fn create_video_consumer<F>(
+        &mut self,
+        id: String,
+        producer_id: String,
+        rtp_parameters: &RtpParameters,
+        on_video_frame: F,
+    ) -> VideoSink
+    where
+        F: (FnMut(VideoFrame)) + Send + 'static,
+    {
+        let rtp_parameters = serde_json::to_string(rtp_parameters).unwrap();
+        self.create_video_consumer_unchecked(id, producer_id, rtp_parameters, on_video_frame)
+    }
+
+    pub fn create_video_consumer_unchecked<F>(
+        &mut self,
+        id: impl Into<Vec<u8>>,
+        producer_id: impl Into<Vec<u8>>,
+        rtp_parameters: impl Into<Vec<u8>>,
+        on_video_frame: F,
+    ) -> VideoSink
+    where
+        F: (FnMut(VideoFrame)) + Send + 'static,
+    {
+        let id = CString::new(id).unwrap();
+        let producer_id = CString::new(producer_id).unwrap();
+        let rtp_parameters = CString::new(rtp_parameters).unwrap();
+
+        let consumer = unsafe {
+            msc_create_consumer(
+                self.inner.device,
+                self.inner.recv_transport.get(),
+                id.as_ptr(),
+                producer_id.as_ptr(),
+                MSC_MEDIA_KIND_AUDIO,
+                rtp_parameters.as_ptr(),
+            )
+        };
+
+        unsafe extern "C" fn on_video_frame_handler<F>(ctx: MscUserPtr, video_frame: MscVideoFrame)
+        where
+            F: FnMut(VideoFrame) + 'static,
+        {
+            let data = unsafe {
+                std::slice::from_raw_parts(
+                    video_frame.data as *mut u8,
+                    video_frame.width as usize * video_frame.height as usize * 4,
+                )
+            };
+
+            ctx.cast_mut::<F>()(VideoFrame {
+                data: data,
+                width: video_frame.width,
+                height: video_frame.height,
+                timestamp_ms: video_frame.timestamp,
+            });
+        }
+
+        let on_video_frame = Box::new(on_video_frame);
+
+        let sink = unsafe {
+            msc_add_video_sink(
+                self.inner.device,
+                consumer,
+                on_video_frame.as_ref() as *const F as *mut c_void,
+                on_video_frame_handler::<F>,
+            )
+        };
+
+        VideoSink {
+            device: Arc::clone(&self.inner),
+            consumer,
+            sink,
+            _callback: on_video_frame,
+        }
+    }
+}
+
+pub struct AudioSink {
+    device: Arc<Inner>,
+    consumer: *mut MscConsumer,
+    sink: *mut MscConsumerSink,
+    _callback: Box<dyn (FnMut(AudioData)) + Send + 'static>,
+}
+
+unsafe impl Send for AudioSink {}
+
+impl Drop for AudioSink {
+    fn drop(&mut self) {
+        unsafe {
+            msc_remove_audio_sink(self.device.device, self.consumer, self.sink);
+            msc_free_consumer(self.consumer);
+        }
+    }
+}
+
+pub struct VideoSink {
+    device: Arc<Inner>,
+    consumer: *mut MscConsumer,
+    sink: *mut MscConsumerSink,
+    _callback: Box<dyn (FnMut(VideoFrame)) + Send + 'static>,
+}
+
+unsafe impl Send for VideoSink {}
+
+impl Drop for VideoSink {
+    fn drop(&mut self) {
+        unsafe {
+            msc_remove_video_sink(self.device.device, self.consumer, self.sink);
+            msc_free_consumer(self.consumer);
+        }
     }
 }
