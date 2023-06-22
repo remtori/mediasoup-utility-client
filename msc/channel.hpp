@@ -1,5 +1,5 @@
 #pragma once
 
-namespace msc {
+namespace impl {
 
 }

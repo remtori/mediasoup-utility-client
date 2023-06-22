@@ -56,9 +56,25 @@ typedef struct MscAudioData {
     int64_t absolute_capture_timestamp_ms;
 } MscAudioData;
 
-typedef void (*WriteLog)(const char*, int);
+typedef enum MscErrorKind {
+    Unknown = 0,
+    JsonParseError,
+    JsonInvalidIter,
+    JsonTypeError,
+    JsonOutOfRange,
+    JsonOther,
+    MediasoupTypeError,
+    MediasoupUnsupportedError,
+    MediasoupInvalidStateError,
+    MediasoupOther,
+    Exception,
+} MscErrorKind;
 
-EXPORT void msc_initialize(WriteLog) NOEXCEPT;
+typedef void (*PushError)(MscErrorKind, const char* message);
+
+typedef void (*WriteLog)(const char* str, int length);
+
+EXPORT void msc_initialize(WriteLog, PushError) NOEXCEPT;
 EXPORT void msc_cleanup() NOEXCEPT;
 
 EXPORT const char* msc_version() NOEXCEPT;
@@ -128,5 +144,5 @@ EXPORT MscConsumerSink* msc_create_audio_sink(
 EXPORT void msc_free_sink(MscConsumerSink* sink) NOEXCEPT;
 
 #ifdef __cplusplus
-};
+}
 #endif

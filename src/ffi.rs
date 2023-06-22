@@ -41,8 +41,23 @@ pub struct MscAudioData {
     pub number_of_frames: ::std::os::raw::c_int,
     pub absolute_capture_timestamp_ms: i64,
 }
+pub const MscErrorKind_Unknown: MscErrorKind = 0;
+pub const MscErrorKind_JsonParseError: MscErrorKind = 1;
+pub const MscErrorKind_JsonInvalidIter: MscErrorKind = 2;
+pub const MscErrorKind_JsonTypeError: MscErrorKind = 3;
+pub const MscErrorKind_JsonOutOfRange: MscErrorKind = 4;
+pub const MscErrorKind_JsonOther: MscErrorKind = 5;
+pub const MscErrorKind_MediasoupTypeError: MscErrorKind = 6;
+pub const MscErrorKind_MediasoupUnsupportedError: MscErrorKind = 7;
+pub const MscErrorKind_MediasoupInvalidStateError: MscErrorKind = 8;
+pub const MscErrorKind_MediasoupOther: MscErrorKind = 9;
+pub const MscErrorKind_Exception: MscErrorKind = 10;
+pub type MscErrorKind = ::std::os::raw::c_uint;
+pub type PushError = ::std::option::Option<
+    unsafe extern "C" fn(arg1: MscErrorKind, message: *const ::std::os::raw::c_char),
+>;
 pub type WriteLog = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *const ::std::os::raw::c_char, arg2: ::std::os::raw::c_int),
+    unsafe extern "C" fn(str_: *const ::std::os::raw::c_char, length: ::std::os::raw::c_int),
 >;
 pub type OnConnect = ::std::option::Option<
     unsafe extern "C" fn(
@@ -77,7 +92,7 @@ pub type OnAudioData = ::std::option::Option<
     unsafe extern "C" fn(ctx: *mut ::std::os::raw::c_void, audio_data: MscAudioData),
 >;
 extern "C" {
-    pub fn msc_initialize(arg1: WriteLog);
+    pub fn msc_initialize(arg1: WriteLog, arg2: PushError);
     pub fn msc_cleanup();
     pub fn msc_version() -> *const ::std::os::raw::c_char;
     pub fn msc_free_string(arg1: *const ::std::os::raw::c_char);

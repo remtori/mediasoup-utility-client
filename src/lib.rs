@@ -10,6 +10,10 @@ use std::{
 };
 
 pub use crate::{error::Error, types::*};
+
+use crate::error::map_ffi_nullptr;
+
+use error::*;
 use ffi::*;
 use once_cell::sync::OnceCell;
 
@@ -22,16 +26,16 @@ fn initialize() {
         let bytes = std::slice::from_raw_parts(str as *const u8, length as usize + 1);
         match CStr::from_bytes_with_nul(bytes) {
             Ok(str) => println!("[FFI] {}", str.to_string_lossy()),
-            Err(err) => eprintln!("[FFI] print_error: {err}"),
+            Err(err) => println!("[FFI] print_error: {err}"),
         }
     }
 
-    unsafe { msc_initialize(Some(print_fn)) };
+    ffi_try_warn!(unsafe { msc_initialize(Some(print_fn), Some(crate::error::push_error)) });
 }
 
 #[allow(unused)]
 fn cleanup() {
-    unsafe { msc_cleanup() };
+    ffi_try_warn!(unsafe { msc_cleanup() });
 }
 
 pub fn version() -> &'static str {
@@ -41,6 +45,8 @@ pub fn version() -> &'static str {
         let version = unsafe { CStr::from_ptr(msc_version()) };
         let out = version.to_string_lossy().to_string();
         unsafe { msc_free_string(version.as_ptr()) };
+
+        ffi_try_warn!();
         out
     })
 }
@@ -98,7 +104,7 @@ struct DeviceHandle(NonNull<MscDevice>);
 
 impl Drop for DeviceHandle {
     fn drop(&mut self) {
-        unsafe { msc_free_device(self.0.as_ptr()) }
+        ffi_try_warn!(unsafe { msc_free_device(self.0.as_ptr()) })
     }
 }
 
@@ -110,7 +116,7 @@ struct TransportHandle {
 
 impl Drop for TransportHandle {
     fn drop(&mut self) {
-        unsafe { msc_free_transport(self.address.as_ptr()) }
+        ffi_try_warn!(unsafe { msc_free_transport(self.address.as_ptr()) })
     }
 }
 
@@ -147,8 +153,8 @@ impl<T: Hash + Eq> Device<None, T> {
             ctx: *mut c_void,
             dtls_parameters: *const c_char,
         ) {
-            let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
-            let transport_ctx = msc_transport_get_ctx(transport);
+            let transport_id = ffi_try_propagate!(CStr::from_ptr(msc_transport_get_id(transport)));
+            let transport_ctx = ffi_try_propagate!(msc_transport_get_ctx(transport));
 
             let dtls_parameters: DtlsParameters =
                 serde_json::from_slice(CStr::from_ptr(dtls_parameters).to_bytes())
@@ -168,8 +174,8 @@ impl<T: Hash + Eq> Device<None, T> {
             ctx: *mut c_void,
             connection_state: *const c_char,
         ) {
-            let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
-            let transport_ctx = msc_transport_get_ctx(transport);
+            let transport_id = ffi_try_propagate!(CStr::from_ptr(msc_transport_get_id(transport)));
+            let transport_ctx = ffi_try_propagate!(msc_transport_get_ctx(transport));
 
             let connection_state = CStr::from_ptr(connection_state);
 
@@ -189,8 +195,8 @@ impl<T: Hash + Eq> Device<None, T> {
             kind: MscMediaKind,
             rtp_parameters: *const c_char,
         ) {
-            let transport_id = CStr::from_ptr(msc_transport_get_id(transport));
-            let transport_ctx = msc_transport_get_ctx(transport);
+            let transport_id = ffi_try_propagate!(CStr::from_ptr(msc_transport_get_id(transport)));
+            let transport_ctx = ffi_try_propagate!(msc_transport_get_ctx(transport));
 
             let rtp_parameters: RtpParameters =
                 serde_json::from_slice(CStr::from_ptr(rtp_parameters).to_bytes())
@@ -210,7 +216,11 @@ impl<T: Hash + Eq> Device<None, T> {
             );
 
             let producer_id = CString::new(producer_id.0).unwrap();
-            msc_fulfill_producer_id(device, promise_id, producer_id.as_ptr());
+            ffi_try_propagate!(msc_fulfill_producer_id(
+                device,
+                promise_id,
+                producer_id.as_ptr()
+            ));
         }
 
         let signaling = Box::new(signaling);
@@ -222,7 +232,7 @@ impl<T: Hash + Eq> Device<None, T> {
                 Some(on_produce_handler::<T, S>),
             )
         })
-        .ok_or(Error::FfiReturnNullptr)?;
+        .ok_or_else(map_ffi_nullptr)?;
 
         Ok(Device {
             device: Arc::new(DeviceHandle(device)),
@@ -243,8 +253,10 @@ impl<T: Hash + Eq> Device<None, T> {
         rtp_capabilities: impl Into<Vec<u8>>,
     ) -> Result<Device<Loaded, T>, Error> {
         let rtp_capabilities = CString::new(rtp_capabilities.into())?;
+
         unsafe {
             msc_load(self.device.0.as_ptr(), rtp_capabilities.as_ptr());
+            check_for_ffi_exception()?;
         }
 
         Ok(Device {
@@ -258,17 +270,21 @@ impl<T: Hash + Eq> Device<None, T> {
 }
 
 impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
-    pub fn can_produce(&self, kind: MediaKind) -> bool {
-        unsafe { msc_can_produce(self.device.0.as_ptr(), kind as u32) }
+    pub fn can_produce(&self, kind: MediaKind) -> Result<bool, Error> {
+        let ret = unsafe { msc_can_produce(self.device.0.as_ptr(), kind as u32) };
+        check_for_ffi_exception().map(|_| ret)
     }
 
     pub fn rtp_capabilities(&self) -> &RtpCapabilities {
         self.device_rtp_capabilities.get_or_init(|| {
-            let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0.as_ptr())) };
+            let caps = ffi_try_warn!(unsafe {
+                CStr::from_ptr(msc_get_rtp_capabilities(self.device.0.as_ptr()))
+            });
             let ret =
                 serde_json::from_slice(caps.to_bytes()).expect("RtpCapabilities structure changed");
 
-            unsafe { msc_free_string(caps.as_ptr()) };
+            ffi_try_warn!(unsafe { msc_free_string(caps.as_ptr()) });
+
             ret
         })
     }
@@ -312,7 +328,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         let dtls_parameters = CString::new(serde_json::to_string(&dtls_parameters)?)?;
 
         let mut transport_ctx = Box::new(transport_id.clone());
-        let transport = NonNull::new(unsafe {
+        let transport: NonNull<MscTransport> = NonNull::new(unsafe {
             msc_create_transport(
                 self.device.0.as_ptr(),
                 transport_kind == TransportKind::Send,
@@ -323,7 +339,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 transport_ctx.as_mut() as *mut T as *mut c_void,
             )
         })
-        .ok_or(Error::FfiReturnNullptr)?;
+        .ok_or_else(map_ffi_nullptr)?;
 
         self.transports.insert(
             (transport_id, transport_kind),
@@ -413,7 +429,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 Some(on_audio_data_handler::<F>),
             )
         })
-        .ok_or(Error::FfiReturnNullptr)?;
+        .ok_or_else(map_ffi_nullptr)?;
 
         Ok(AudioSink {
             sink,
@@ -491,7 +507,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 Some(on_video_frame_handler::<F>),
             )
         })
-        .ok_or(Error::FfiReturnNullptr)?;
+        .ok_or_else(map_ffi_nullptr)?;
 
         Ok(VideoSink {
             sink,
@@ -509,7 +525,7 @@ unsafe impl Send for AudioSink {}
 
 impl Drop for AudioSink {
     fn drop(&mut self) {
-        unsafe { msc_free_sink(self.sink.as_ptr()) }
+        ffi_try_warn!(unsafe { msc_free_sink(self.sink.as_ptr()) })
     }
 }
 
@@ -522,6 +538,6 @@ unsafe impl Send for VideoSink {}
 
 impl Drop for VideoSink {
     fn drop(&mut self) {
-        unsafe { msc_free_sink(self.sink.as_ptr()) }
+        ffi_try_warn!(unsafe { msc_free_sink(self.sink.as_ptr()) })
     }
 }

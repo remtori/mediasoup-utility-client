@@ -13,23 +13,22 @@ add_compile_options(
 	-Wno-deprecated-declarations
 )
 
-set_source_files_properties(${SOURCE_FILES}
-    PROPERTIES COMPILE_FLAGS
-    -Wall -Wextra -Wpedantic
-)
-
 add_library(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
     msc/lib.h
     msc/lib.cpp
+    msc/device.hpp
+    msc/device.cpp
+    msc/media_sink.hpp
+    msc/media_sink.cpp
     msc/peer_connection_factory.cpp
 )
 
 add_subdirectory(deps/fmt)
 add_subdirectory(deps/libmediasoupclient)
 
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
     deps/fmt/include
     deps/libmediasoupclient/include
     deps/libmediasoupclient/deps/libsdptransform/include
@@ -50,4 +49,8 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 	$<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
 	$<$<PLATFORM_ID:Darwin>:WEBRTC_MAC>
     NDEBUG
+)
+
+target_compile_options(${PROJECT_NAME} PRIVATE
+    -Wall -Wextra -Wpedantic
 )

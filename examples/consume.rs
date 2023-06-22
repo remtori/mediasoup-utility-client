@@ -169,7 +169,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .send()?;
 
     println!("Done, exiting..");
-    // std::thread::park();
+    std::thread::park();
 
     Ok(())
 }
