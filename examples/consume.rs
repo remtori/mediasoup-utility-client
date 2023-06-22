@@ -83,6 +83,7 @@ impl rusty_msc::Signaling<String> for Signal {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let mut last = None;
     let streamer_id = "1268521857".to_owned();
 
     let client = reqwest::blocking::Client::new();
@@ -93,11 +94,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let device = Device::new(Signal {
         client: client.clone(),
-    });
+    })?;
 
-    let mut device = device.load(&rtp_capabilities.json::<RtpCapabilities>()?);
+    let mut device = device.load(&rtp_capabilities.json::<RtpCapabilities>()?)?;
 
-    device.ensure_transport(&streamer_id, rusty_msc::TransportKind::Recv);
+    device.ensure_transport(&streamer_id, rusty_msc::TransportKind::Recv)?;
 
     println!("consuming server side");
     let consumers = client
@@ -137,7 +138,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 |data: AudioData| {
                     let _ = data;
                 },
-            );
+            )?;
 
             std::mem::forget(sink);
         } else {
@@ -154,9 +155,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         data.width, data.height, data.timestamp_ms
                     );
                 },
-            );
+            )?;
 
-            std::mem::forget(sink);
+            // std::mem::forget(sink);
+            last = Some(sink);
         }
     }
 
@@ -167,7 +169,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .send()?;
 
     println!("Done, exiting..");
-    std::thread::park();
+    // std::thread::park();
 
     Ok(())
 }
