@@ -5,6 +5,7 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     os::raw::{c_char, c_void},
+    ptr::NonNull,
     sync::{Arc, Once},
 };
 
@@ -90,22 +91,22 @@ pub trait Signaling<T>: Send + Sync {
 pub struct None;
 pub struct Loaded;
 
-struct DeviceHandle(*mut MscDevice);
+struct DeviceHandle(NonNull<MscDevice>);
 
 impl Drop for DeviceHandle {
     fn drop(&mut self) {
-        unsafe { msc_free_device(self.0) }
+        unsafe { msc_free_device(self.0.as_ptr()) }
     }
 }
 
 struct TransportHandle {
-    address: *mut MscTransport,
+    address: NonNull<MscTransport>,
     _ctx: Box<dyn std::any::Any>,
 }
 
 impl Drop for TransportHandle {
     fn drop(&mut self) {
-        unsafe { msc_free_transport(self.address) }
+        unsafe { msc_free_transport(self.address.as_ptr()) }
     }
 }
 
@@ -217,7 +218,7 @@ impl<T: Hash + Eq> Device<None, T> {
         };
 
         Device {
-            device: Arc::new(DeviceHandle(device)),
+            device: Arc::new(DeviceHandle(NonNull::new(device).unwrap())),
             device_rtp_capabilities: OnceCell::new(),
             transports: Default::default(),
             signaling: RefCell::new(signaling),
@@ -232,7 +233,7 @@ impl<T: Hash + Eq> Device<None, T> {
 
     pub fn load_unchecked(self, rtp_capabilities: impl Into<Vec<u8>>) -> Device<Loaded, T> {
         let rtp_capabilities = CString::new(rtp_capabilities.into()).unwrap();
-        unsafe { msc_load(self.device.0, rtp_capabilities.as_ptr()) };
+        unsafe { msc_load(self.device.0.as_ptr(), rtp_capabilities.as_ptr()) };
 
         Device {
             device: self.device,
@@ -246,16 +247,20 @@ impl<T: Hash + Eq> Device<None, T> {
 
 impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
     pub fn can_produce(&self, kind: MediaKind) -> bool {
-        unsafe { msc_can_produce(self.device.0, kind as u32) }
+        unsafe { msc_can_produce(self.device.0.as_ptr(), kind as u32) }
     }
 
     pub fn rtp_capabilities(&self) -> &RtpCapabilities {
         self.device_rtp_capabilities.get_or_init(|| {
-            let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0)) };
+            let caps = unsafe { CStr::from_ptr(msc_get_rtp_capabilities(self.device.0.as_ptr())) };
             let ret = serde_json::from_slice(caps.to_bytes()).unwrap();
             unsafe { msc_free_string(caps.as_ptr()) };
             ret
         })
+    }
+
+    pub fn ensure_transport(&mut self, transport_id: &T, transport_kind: TransportKind) {
+        self.get_or_create_transport(transport_id, transport_kind);
     }
 
     fn get_or_create_transport(
@@ -267,7 +272,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         let transport_id = transport_id.clone();
         let map_key = (transport_id, transport_kind);
         if let Some(transport) = self.transports.get(&map_key) {
-            return transport.address;
+            return transport.address.as_ptr();
         }
 
         let transport_id = map_key.0;
@@ -291,7 +296,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         let mut transport_ctx = Box::new(transport_id.clone());
         let transport = unsafe {
             msc_create_transport(
-                self.device.0,
+                self.device.0.as_ptr(),
                 transport_kind == TransportKind::Send,
                 id.as_ptr(),
                 ice_parameters.as_ptr(),
@@ -304,7 +309,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         self.transports.insert(
             (transport_id, transport_kind),
             TransportHandle {
-                address: transport,
+                address: NonNull::new(transport).unwrap(),
                 _ctx: transport_ctx,
             },
         );
@@ -344,22 +349,6 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
     where
         F: (FnMut(AudioData)) + Send + 'static,
     {
-        let id = CString::new(id).unwrap();
-        let producer_id = CString::new(producer_id).unwrap();
-        let rtp_parameters = CString::new(rtp_parameters).unwrap();
-
-        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv);
-        let consumer = unsafe {
-            msc_create_consumer(
-                self.device.0,
-                transport,
-                id.as_ptr(),
-                producer_id.as_ptr(),
-                MediaKind::Audio as u32,
-                rtp_parameters.as_ptr(),
-            )
-        };
-
         unsafe extern "C" fn on_audio_data_handler<F>(ctx: *mut c_void, audio_data: MscAudioData)
         where
             F: FnMut(AudioData) + 'static,
@@ -387,17 +376,26 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
 
         let on_audio_data = Box::new(on_audio_data);
 
+        let id = CString::new(id).unwrap();
+        let producer_id = CString::new(producer_id).unwrap();
+        let rtp_parameters = CString::new(rtp_parameters).unwrap();
+
+        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv);
+
         let sink = unsafe {
-            msc_add_audio_sink(
-                consumer,
+            msc_create_audio_sink(
+                self.device.0.as_ptr(),
+                transport,
+                id.as_ptr(),
+                producer_id.as_ptr(),
+                rtp_parameters.as_ptr(),
                 on_audio_data.as_ref() as *const F as *mut c_void,
                 Some(on_audio_data_handler::<F>),
             )
         };
 
         AudioSink {
-            consumer,
-            sink,
+            sink: NonNull::new(sink).unwrap(),
             _callback: on_audio_data,
         }
     }
@@ -434,22 +432,6 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
     where
         F: (FnMut(VideoFrame)) + Send + 'static,
     {
-        let id = CString::new(id).unwrap();
-        let producer_id = CString::new(producer_id).unwrap();
-        let rtp_parameters = CString::new(rtp_parameters).unwrap();
-
-        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv);
-        let consumer = unsafe {
-            msc_create_consumer(
-                self.device.0,
-                transport,
-                id.as_ptr(),
-                producer_id.as_ptr(),
-                MediaKind::Video as u32,
-                rtp_parameters.as_ptr(),
-            )
-        };
-
         unsafe extern "C" fn on_video_frame_handler<F>(ctx: *mut c_void, video_frame: MscVideoFrame)
         where
             F: FnMut(VideoFrame) + 'static,
@@ -471,25 +453,33 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
 
         let on_video_frame = Box::new(on_video_frame);
 
+        let id = CString::new(id).unwrap();
+        let producer_id = CString::new(producer_id).unwrap();
+        let rtp_parameters = CString::new(rtp_parameters).unwrap();
+
+        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv);
+
         let sink = unsafe {
-            msc_add_video_sink(
-                consumer,
+            msc_create_video_sink(
+                self.device.0.as_ptr(),
+                transport,
+                id.as_ptr(),
+                producer_id.as_ptr(),
+                rtp_parameters.as_ptr(),
                 on_video_frame.as_ref() as *const F as *mut c_void,
                 Some(on_video_frame_handler::<F>),
             )
         };
 
         VideoSink {
-            consumer,
-            sink,
+            sink: NonNull::new(sink).unwrap(),
             _callback: on_video_frame,
         }
     }
 }
 
 pub struct AudioSink {
-    consumer: *mut MscConsumer,
-    sink: *mut MscConsumerSink,
+    sink: NonNull<MscConsumerSink>,
     _callback: Box<dyn (FnMut(AudioData)) + Send + 'static>,
 }
 
@@ -497,16 +487,12 @@ unsafe impl Send for AudioSink {}
 
 impl Drop for AudioSink {
     fn drop(&mut self) {
-        unsafe {
-            msc_remove_audio_sink(self.consumer, self.sink);
-            msc_free_consumer(self.consumer);
-        }
+        unsafe { msc_free_sink(self.sink.as_ptr()) }
     }
 }
 
 pub struct VideoSink {
-    consumer: *mut MscConsumer,
-    sink: *mut MscConsumerSink,
+    sink: NonNull<MscConsumerSink>,
     _callback: Box<dyn (FnMut(VideoFrame)) + Send + 'static>,
 }
 
@@ -514,9 +500,6 @@ unsafe impl Send for VideoSink {}
 
 impl Drop for VideoSink {
     fn drop(&mut self) {
-        unsafe {
-            msc_remove_video_sink(self.consumer, self.sink);
-            msc_free_consumer(self.consumer);
-        }
+        unsafe { msc_free_sink(self.sink.as_ptr()) }
     }
 }

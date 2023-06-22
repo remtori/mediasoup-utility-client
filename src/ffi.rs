@@ -22,10 +22,6 @@ pub struct MscProducer {
     pub source: *mut ::std::os::raw::c_void,
 }
 #[repr(C)]
-pub struct MscConsumer {
-    pub _address: u8,
-}
-#[repr(C)]
 pub struct MscConsumerSink {
     pub _address: u8,
 }
@@ -129,25 +125,23 @@ extern "C" {
         arg1: MscVideoFrame,
     );
     pub fn msc_supply_audio(device: *mut MscDevice, producer: *mut MscProducer, arg1: MscAudioData);
-    pub fn msc_create_consumer(
+    pub fn msc_create_video_sink(
         device: *mut MscDevice,
         transport: *mut MscTransport,
         id: *const ::std::os::raw::c_char,
         producer_id: *const ::std::os::raw::c_char,
-        kind: MscMediaKind,
         rtp_parameters: *const ::std::os::raw::c_char,
-    ) -> *mut MscConsumer;
-    pub fn msc_free_consumer(arg1: *mut MscConsumer);
-    pub fn msc_add_video_sink(
-        consumer: *mut MscConsumer,
         ctx: *mut ::std::os::raw::c_void,
         callback: OnVideoFrame,
     ) -> *mut MscConsumerSink;
-    pub fn msc_add_audio_sink(
-        consumer: *mut MscConsumer,
+    pub fn msc_create_audio_sink(
+        device: *mut MscDevice,
+        transport: *mut MscTransport,
+        id: *const ::std::os::raw::c_char,
+        producer_id: *const ::std::os::raw::c_char,
+        rtp_parameters: *const ::std::os::raw::c_char,
         ctx: *mut ::std::os::raw::c_void,
         callback: OnAudioData,
     ) -> *mut MscConsumerSink;
-    pub fn msc_remove_video_sink(consumer: *mut MscConsumer, sink: *mut MscConsumerSink);
-    pub fn msc_remove_audio_sink(consumer: *mut MscConsumer, sink: *mut MscConsumerSink);
+    pub fn msc_free_sink(sink: *mut MscConsumerSink);
 }

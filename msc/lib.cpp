@@ -143,13 +143,26 @@ void Device::OnTransportClose(mediasoupclient::Consumer* consumer)
     // TODO
 }
 
-class AudioConsumer : public webrtc::AudioTrackSinkInterface {
+class BaseSink {
 public:
-    AudioConsumer(void* user_ctx, OnAudioData on_audio_data)
-        : m_user_ctx(user_ctx)
+    virtual ~BaseSink() {};
+
+    virtual bool is_audio_sink() const = 0;
+    virtual mediasoupclient::Consumer* consumer() const = 0;
+};
+
+class AudioSink : public BaseSink
+    , public webrtc::AudioTrackSinkInterface {
+public:
+    AudioSink(mediasoupclient::Consumer* consumer, void* user_ctx, OnAudioData on_audio_data)
+        : m_consumer(consumer)
+        , m_user_ctx(user_ctx)
         , m_on_audio_data(on_audio_data)
     {
     }
+
+    bool is_audio_sink() const override { return true; }
+    mediasoupclient::Consumer* consumer() const { return m_consumer; }
 
     void OnData(
         const void* data,
@@ -175,17 +188,23 @@ public:
     }
 
 private:
+    mediasoupclient::Consumer* m_consumer;
     void* m_user_ctx;
     OnAudioData m_on_audio_data;
 };
 
-class VideoConsumer : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
+class VideoSink : public BaseSink
+    , public rtc::VideoSinkInterface<webrtc::VideoFrame> {
 public:
-    VideoConsumer(void* user_ctx, OnVideoFrame on_video_data)
-        : m_user_ctx(user_ctx)
+    VideoSink(mediasoupclient::Consumer* consumer, void* user_ctx, OnVideoFrame on_video_data)
+        : m_consumer(consumer)
+        , m_user_ctx(user_ctx)
         , m_on_video_frame(on_video_data)
     {
     }
+
+    bool is_audio_sink() const override { return false; }
+    mediasoupclient::Consumer* consumer() const { return m_consumer; }
 
     void OnFrame(const webrtc::VideoFrame& frame) override
     {
@@ -212,6 +231,7 @@ public:
     }
 
 private:
+    mediasoupclient::Consumer* m_consumer;
     void* m_user_ctx;
     OnVideoFrame m_on_video_frame;
     std::vector<uint8_t> m_data {};
@@ -368,7 +388,7 @@ MscTransport* msc_create_transport(
     const char* dtls_parameters,
     void* transport_ctx) noexcept
 {
-    println("Device::create_send_transport()");
+    println("Device::create_transport(is_send={})", is_send);
     auto* device = reinterpret_cast<impl::Device*>(in_device);
 
     mediasoupclient::PeerConnection::Options options;
@@ -469,15 +489,16 @@ void msc_supply_audio(MscDevice*, MscProducer*, MscAudioData) noexcept
     // TODO
 }
 
-MscConsumer* msc_create_consumer(
+MscConsumerSink* msc_create_video_sink(
     MscDevice* in_device,
     MscTransport* in_transport,
     const char* id,
     const char* producer_id,
-    MscMediaKind kind,
-    const char* rtp_parameters) noexcept
+    const char* rtp_parameters,
+    void* user_ctx,
+    OnVideoFrame on_video_frame) noexcept
 {
-    println("Transport::create_consumer()");
+    println("Transport::create_video_sink()");
 
     auto* device = reinterpret_cast<impl::Device*>(in_device);
     auto* recv_transport = reinterpret_cast<mediasoupclient::RecvTransport*>(in_transport);
@@ -487,65 +508,60 @@ MscConsumer* msc_create_consumer(
         device,
         id,
         producer_id,
-        kind == MscMediaKind::Audio ? "audio" : "video",
+        "video",
         &parsed_rtp_parameters);
 
-    return reinterpret_cast<MscConsumer*>(consumer);
-}
-
-void msc_free_consumer(MscConsumer* in_consumer) noexcept
-{
-    println("delete Consumer");
-
-    auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
-    consumer->Close();
-
-    delete consumer;
-}
-
-MscConsumerSink* msc_add_video_sink(MscConsumer* in_consumer, void* user_ctx, OnVideoFrame on_video_frame) noexcept
-{
-    println("Consumer::add_video_sink()");
-
-    auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
-
-    auto* sink = new impl::VideoConsumer(user_ctx, on_video_frame);
+    auto* sink = new impl::VideoSink(consumer, user_ctx, on_video_frame);
     dynamic_cast<webrtc::VideoTrackInterface*>(consumer->GetTrack())->AddOrUpdateSink(sink, {});
 
     return reinterpret_cast<MscConsumerSink*>(sink);
 }
 
-MscConsumerSink* msc_add_audio_sink(MscConsumer* in_consumer, void* user_ctx, OnAudioData on_audio_data) noexcept
+MscConsumerSink* msc_create_audio_sink(
+    MscDevice* in_device,
+    MscTransport* in_transport,
+    const char* id,
+    const char* producer_id,
+    const char* rtp_parameters,
+    void* user_ctx,
+    OnAudioData on_audio_data) noexcept
 {
-    println("Consumer::add_audio_sink()");
+    println("Transport::create_audio_sink()");
 
-    auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
+    auto* device = reinterpret_cast<impl::Device*>(in_device);
+    auto* recv_transport = reinterpret_cast<mediasoupclient::RecvTransport*>(in_transport);
 
-    auto* sink = new impl::AudioConsumer(user_ctx, on_audio_data);
+    auto parsed_rtp_parameters = nlohmann::json::parse(rtp_parameters);
+    auto* consumer = recv_transport->Consume(
+        device,
+        id,
+        producer_id,
+        "audio",
+        &parsed_rtp_parameters);
+
+    auto* sink = new impl::AudioSink(consumer, user_ctx, on_audio_data);
     dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->AddSink(sink);
 
     return reinterpret_cast<MscConsumerSink*>(sink);
 }
 
-void msc_remove_video_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink) noexcept
+void msc_free_sink(MscConsumerSink* in_sink) noexcept
 {
-    println("Consumer::remove_video_sink()");
+    println("delete ConsumerSink");
 
-    auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
-    auto* sink = reinterpret_cast<impl::VideoConsumer*>(in_sink);
+    auto* sink = reinterpret_cast<impl::BaseSink*>(in_sink);
+    auto* consumer = sink->consumer();
+    if (sink->is_audio_sink()) {
+        auto* audio_sink = dynamic_cast<impl::AudioSink*>(sink);
+        dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->RemoveSink(audio_sink);
+        delete audio_sink;
+    } else {
+        auto* video_sink = dynamic_cast<impl::VideoSink*>(sink);
+        dynamic_cast<webrtc::VideoTrackInterface*>(consumer->GetTrack())->RemoveSink(video_sink);
+        delete video_sink;
+    }
 
-    dynamic_cast<webrtc::VideoTrackInterface*>(consumer->GetTrack())->RemoveSink(sink);
-    delete sink;
-}
-
-void msc_remove_audio_sink(MscConsumer* in_consumer, MscConsumerSink* in_sink) noexcept
-{
-    println("Consumer::remove_audio_sink()");
-
-    auto* consumer = reinterpret_cast<mediasoupclient::Consumer*>(in_consumer);
-    auto* sink = reinterpret_cast<impl::AudioConsumer*>(in_sink);
-
-    dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->RemoveSink(sink);
-    delete sink;
+    consumer->Close();
+    delete consumer;
 }
 }

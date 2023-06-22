@@ -83,7 +83,7 @@ impl rusty_msc::Signaling<String> for Signal {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let streamer_id = "1174393215".to_owned();
+    let streamer_id = "1268521857".to_owned();
 
     let client = reqwest::blocking::Client::new();
     let rtp_capabilities = client
@@ -96,6 +96,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let mut device = device.load(&rtp_capabilities.json::<RtpCapabilities>()?);
+
+    device.ensure_transport(&streamer_id, rusty_msc::TransportKind::Recv);
 
     println!("consuming server side");
     let consumers = client
