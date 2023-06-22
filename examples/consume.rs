@@ -1,8 +1,12 @@
-use std::error::Error;
+use opencv::{
+    core::{Size, Vector},
+    prelude::*,
+};
+use std::{error::Error, time::Duration};
 
 use rusty_msc::{
     AudioData, Device, DtlsParameters, MediaKind, ProducerId, RtpCapabilities, RtpParameters,
-    VideoFrame,
+    VideoConsumer, VideoFrame,
 };
 
 pub extern crate rusty_msc;
@@ -82,8 +86,48 @@ impl rusty_msc::Signaling<String> for Signal {
     }
 }
 
+#[derive(Default)]
+struct VideoWriterSink {
+    writer: Option<opencv::videoio::VideoWriter>,
+    buffer: Option<Vector<u8>>,
+}
+
+impl VideoConsumer for VideoWriterSink {
+    fn on_video(&mut self, video_frame: VideoFrame) {
+        let writer = match self.writer.as_mut() {
+            Some(w) => w,
+            None => self.writer.insert(
+                opencv::videoio::VideoWriter::new(
+                    "out.mp4",
+                    opencv::videoio::VideoWriter::fourcc('a', 'v', 'c', '1').unwrap(),
+                    24.0,
+                    Size {
+                        width: video_frame.width,
+                        height: video_frame.height,
+                    },
+                    true,
+                )
+                .unwrap(),
+            ),
+        };
+
+        let buffer = match self.buffer.as_mut() {
+            Some(b) => b,
+            None => self.buffer.insert(Vector::from_elem(
+                0,
+                video_frame.width as usize * video_frame.height as usize * 4,
+            )),
+        };
+
+        buffer.as_mut_slice().copy_from_slice(video_frame.data);
+
+        if let Err(err) = writer.write(buffer) {
+            println!("write video err {err}");
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut last = None;
     let streamer_id = "1268521857".to_owned();
 
     let client = reqwest::blocking::Client::new();
@@ -119,6 +163,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         rtp_parameters: RtpParameters,
     }
 
+    let mut video_sink = None;
+
     let consumers: Vec<ConsumerInfo> = consumers.json()?;
     for consumer in consumers {
         let (media_kind, _is_screen) = match consumer.producer_type.as_str() {
@@ -148,17 +194,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 consumer.consumer_id,
                 consumer.producer_id,
                 &consumer.rtp_parameters,
-                |data: VideoFrame| {
-                    let _ = data;
-                    println!(
-                        "got video {}x{} at {}",
-                        data.width, data.height, data.timestamp_ms
-                    );
-                },
+                VideoWriterSink::default(),
             )?;
 
-            // std::mem::forget(sink);
-            last = Some(sink);
+            video_sink = Some(sink);
         }
     }
 
@@ -168,8 +207,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         .json(&serde_json::Map::new())
         .send()?;
 
-    println!("Done, exiting..");
-    std::thread::park();
+    println!("Wait 5s");
+    std::thread::sleep(Duration::from_secs_f32(10.0));
+    video_sink
+        .unwrap()
+        .take()
+        .writer
+        .unwrap()
+        .release()
+        .unwrap();
 
+    println!("Done, exiting..");
     Ok(())
 }

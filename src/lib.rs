@@ -353,17 +353,14 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         Ok(transport)
     }
 
-    pub fn create_audio_consumer<F>(
+    pub fn create_audio_consumer<C: AudioConsumer>(
         &mut self,
         transport_id: &T,
         id: String,
         producer_id: String,
         rtp_parameters: &RtpParameters,
-        on_audio_data: F,
-    ) -> Result<AudioSink, Error>
-    where
-        F: (FnMut(AudioData)) + Send + 'static,
-    {
+        on_audio_data: C,
+    ) -> Result<AudioSink<C>, Error> {
         let rtp_parameters = serde_json::to_string(rtp_parameters)?;
         self.create_audio_consumer_unchecked(
             transport_id,
@@ -374,21 +371,18 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         )
     }
 
-    pub fn create_audio_consumer_unchecked<F>(
+    pub fn create_audio_consumer_unchecked<C: AudioConsumer>(
         &mut self,
         transport_id: &T,
         id: impl Into<Vec<u8>>,
         producer_id: impl Into<Vec<u8>>,
         rtp_parameters: impl Into<Vec<u8>>,
-        on_audio_data: F,
-    ) -> Result<AudioSink, Error>
-    where
-        F: (FnMut(AudioData)) + Send + 'static,
-    {
-        unsafe extern "C" fn on_audio_data_handler<F>(ctx: *mut c_void, audio_data: MscAudioData)
-        where
-            F: FnMut(AudioData) + 'static,
-        {
+        on_audio_data: C,
+    ) -> Result<AudioSink<C>, Error> {
+        unsafe extern "C" fn on_audio_data_handler<C: AudioConsumer>(
+            ctx: *mut c_void,
+            audio_data: MscAudioData,
+        ) {
             let data = unsafe {
                 std::slice::from_raw_parts(
                     audio_data.data as *mut u8,
@@ -400,7 +394,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 )
             };
 
-            (*(ctx as *mut F))(AudioData {
+            (*(ctx as *mut C)).on_audio(AudioData {
                 data: data,
                 bits_per_sample: audio_data.bits_per_sample as _,
                 sample_rate: audio_data.sample_rate as _,
@@ -425,29 +419,26 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 id.as_ptr(),
                 producer_id.as_ptr(),
                 rtp_parameters.as_ptr(),
-                on_audio_data.as_ref() as *const F as *mut c_void,
-                Some(on_audio_data_handler::<F>),
+                on_audio_data.as_ref() as *const C as *mut c_void,
+                Some(on_audio_data_handler::<C>),
             )
         })
         .ok_or_else(map_ffi_nullptr)?;
 
         Ok(AudioSink {
             sink,
-            _callback: on_audio_data,
+            consumer: Some(on_audio_data),
         })
     }
 
-    pub fn create_video_consumer<F>(
+    pub fn create_video_consumer<C: VideoConsumer>(
         &mut self,
         transport_id: &T,
         id: String,
         producer_id: String,
         rtp_parameters: &RtpParameters,
-        on_video_frame: F,
-    ) -> Result<VideoSink, Error>
-    where
-        F: (FnMut(VideoFrame)) + Send + 'static,
-    {
+        on_video_frame: C,
+    ) -> Result<VideoSink<C>, Error> {
         let rtp_parameters = serde_json::to_string(rtp_parameters)?;
         self.create_video_consumer_unchecked(
             transport_id,
@@ -458,21 +449,18 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
         )
     }
 
-    pub fn create_video_consumer_unchecked<F>(
+    pub fn create_video_consumer_unchecked<C: VideoConsumer>(
         &mut self,
         transport_id: &T,
         id: impl Into<Vec<u8>>,
         producer_id: impl Into<Vec<u8>>,
         rtp_parameters: impl Into<Vec<u8>>,
-        on_video_frame: F,
-    ) -> Result<VideoSink, Error>
-    where
-        F: (FnMut(VideoFrame)) + Send + 'static,
-    {
-        unsafe extern "C" fn on_video_frame_handler<F>(ctx: *mut c_void, video_frame: MscVideoFrame)
-        where
-            F: FnMut(VideoFrame) + 'static,
-        {
+        on_video_frame: C,
+    ) -> Result<VideoSink<C>, Error> {
+        unsafe extern "C" fn on_video_frame_handler<C: VideoConsumer>(
+            ctx: *mut c_void,
+            video_frame: MscVideoFrame,
+        ) {
             let data = unsafe {
                 std::slice::from_raw_parts(
                     video_frame.data as *mut u8,
@@ -480,7 +468,7 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 )
             };
 
-            (*(ctx as *mut F))(VideoFrame {
+            (*(ctx as *mut C)).on_video(VideoFrame {
                 data: data,
                 width: video_frame.width,
                 height: video_frame.height,
@@ -503,40 +491,72 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
                 id.as_ptr(),
                 producer_id.as_ptr(),
                 rtp_parameters.as_ptr(),
-                on_video_frame.as_ref() as *const F as *mut c_void,
-                Some(on_video_frame_handler::<F>),
+                on_video_frame.as_ref() as *const C as *mut c_void,
+                Some(on_video_frame_handler::<C>),
             )
         })
         .ok_or_else(map_ffi_nullptr)?;
 
         Ok(VideoSink {
             sink,
-            _callback: on_video_frame,
+            consumer: Some(on_video_frame),
         })
     }
 }
 
-pub struct AudioSink {
-    sink: NonNull<MscConsumerSink>,
-    _callback: Box<dyn (FnMut(AudioData)) + Send + 'static>,
+pub trait AudioConsumer: 'static + Send {
+    fn on_audio(&mut self, audio_data: AudioData);
 }
 
-unsafe impl Send for AudioSink {}
+pub trait VideoConsumer: 'static + Send {
+    fn on_video(&mut self, video_frame: VideoFrame);
+}
 
-impl Drop for AudioSink {
+impl<F: (FnMut(AudioData)) + Send + 'static> AudioConsumer for F {
+    fn on_audio(&mut self, audio_data: AudioData) {
+        (self)(audio_data)
+    }
+}
+
+impl<F: (FnMut(VideoFrame)) + Send + 'static> VideoConsumer for F {
+    fn on_video(&mut self, video_frame: VideoFrame) {
+        (self)(video_frame)
+    }
+}
+
+pub struct AudioSink<C> {
+    sink: NonNull<MscConsumerSink>,
+    consumer: Option<Box<C>>,
+}
+
+unsafe impl<C> Send for AudioSink<C> {}
+
+impl<C: AudioConsumer> AudioSink<C> {
+    pub fn take(mut self) -> Box<C> {
+        self.consumer.take().unwrap()
+    }
+}
+
+impl<C> Drop for AudioSink<C> {
     fn drop(&mut self) {
         ffi_try_warn!(unsafe { msc_free_sink(self.sink.as_ptr()) })
     }
 }
 
-pub struct VideoSink {
+pub struct VideoSink<C> {
     sink: NonNull<MscConsumerSink>,
-    _callback: Box<dyn (FnMut(VideoFrame)) + Send + 'static>,
+    consumer: Option<Box<C>>,
 }
 
-unsafe impl Send for VideoSink {}
+unsafe impl<C> Send for VideoSink<C> {}
 
-impl Drop for VideoSink {
+impl<C: VideoConsumer> VideoSink<C> {
+    pub fn take(mut self) -> Box<C> {
+        self.consumer.take().unwrap()
+    }
+}
+
+impl<C> Drop for VideoSink<C> {
     fn drop(&mut self) {
         ffi_try_warn!(unsafe { msc_free_sink(self.sink.as_ptr()) })
     }
