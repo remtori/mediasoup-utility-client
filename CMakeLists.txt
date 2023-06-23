@@ -23,6 +23,8 @@ target_sources(${PROJECT_NAME} PRIVATE
     msc/media_sink.hpp
     msc/media_sink.cpp
     msc/peer_connection_factory.cpp
+    msc/video_writer.hpp
+    msc/video_writer.cpp
 )
 
 add_subdirectory(deps/fmt)
@@ -35,6 +37,7 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
     deps/webrtc/include
     deps/webrtc/include/third_party/abseil-cpp
     deps/webrtc/include/third_party/libyuv/include
+    deps/webrtc/include/third_party/ffmpeg
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

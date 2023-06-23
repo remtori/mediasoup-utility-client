@@ -502,6 +502,71 @@ impl<T: 'static + Hash + Eq + Clone> Device<Loaded, T> {
             consumer: Some(on_video_frame),
         })
     }
+
+    pub fn create_video_writer<C: VideoWriter>(
+        &mut self,
+        transport_id: &T,
+        id: String,
+        producer_id: String,
+        rtp_parameters: &RtpParameters,
+        on_video_frame: C,
+    ) -> Result<VideoWriterSink<C>, Error> {
+        let rtp_parameters = serde_json::to_string(rtp_parameters)?;
+        self.create_video_writer_unchecked(
+            transport_id,
+            id,
+            producer_id,
+            rtp_parameters,
+            on_video_frame,
+        )
+    }
+
+    pub fn create_video_writer_unchecked<C: VideoWriter>(
+        &mut self,
+        transport_id: &T,
+        id: impl Into<Vec<u8>>,
+        producer_id: impl Into<Vec<u8>>,
+        rtp_parameters: impl Into<Vec<u8>>,
+        on_write: C,
+    ) -> Result<VideoWriterSink<C>, Error> {
+        unsafe extern "C" fn on_video_frame_writer<C: VideoWriter>(
+            ctx: *mut c_void,
+            buffer: *mut u8,
+            buffer_length: std::ffi::c_int,
+        ) -> i32 {
+            println!("atleast me?");
+
+            let data = unsafe { std::slice::from_raw_parts(buffer, buffer_length as usize) };
+            (*(ctx as *mut C)).on_write(data);
+            0
+        }
+
+        let on_video_frame = Box::new(on_write);
+
+        let id = CString::new(id)?;
+        let producer_id = CString::new(producer_id)?;
+        let rtp_parameters = CString::new(rtp_parameters)?;
+
+        let transport = self.get_or_create_transport(transport_id, TransportKind::Recv)?;
+
+        let sink = NonNull::new(unsafe {
+            msc_create_video_writer(
+                self.device.0.as_ptr(),
+                transport.as_ptr(),
+                id.as_ptr(),
+                producer_id.as_ptr(),
+                rtp_parameters.as_ptr(),
+                on_video_frame.as_ref() as *const C as *mut c_void,
+                Some(on_video_frame_writer::<C>),
+            )
+        })
+        .ok_or_else(map_ffi_nullptr)?;
+
+        Ok(VideoWriterSink {
+            sink,
+            consumer: Some(on_video_frame),
+        })
+    }
 }
 
 pub trait AudioConsumer: 'static + Send {
@@ -510,6 +575,10 @@ pub trait AudioConsumer: 'static + Send {
 
 pub trait VideoConsumer: 'static + Send {
     fn on_video(&mut self, video_frame: VideoFrame);
+}
+
+pub trait VideoWriter: 'static + Send {
+    fn on_write(&mut self, data: &[u8]);
 }
 
 impl<F: (FnMut(AudioData)) + Send + 'static> AudioConsumer for F {
@@ -521,6 +590,12 @@ impl<F: (FnMut(AudioData)) + Send + 'static> AudioConsumer for F {
 impl<F: (FnMut(VideoFrame)) + Send + 'static> VideoConsumer for F {
     fn on_video(&mut self, video_frame: VideoFrame) {
         (self)(video_frame)
+    }
+}
+
+impl<F: (FnMut(&[u8])) + Send + 'static> VideoWriter for F {
+    fn on_write(&mut self, data: &[u8]) {
+        (self)(data)
     }
 }
 
@@ -557,6 +632,25 @@ impl<C: VideoConsumer> VideoSink<C> {
 }
 
 impl<C> Drop for VideoSink<C> {
+    fn drop(&mut self) {
+        ffi_try_warn!(unsafe { msc_free_sink(self.sink.as_ptr()) })
+    }
+}
+
+pub struct VideoWriterSink<C> {
+    sink: NonNull<MscConsumerSink>,
+    consumer: Option<Box<C>>,
+}
+
+unsafe impl<C> Send for VideoWriterSink<C> {}
+
+impl<C: VideoWriter> VideoWriterSink<C> {
+    pub fn take(mut self) -> Box<C> {
+        self.consumer.take().unwrap()
+    }
+}
+
+impl<C> Drop for VideoWriterSink<C> {
     fn drop(&mut self) {
         ffi_try_warn!(unsafe { msc_free_sink(self.sink.as_ptr()) })
     }

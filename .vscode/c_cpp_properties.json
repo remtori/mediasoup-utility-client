@@ -9,7 +9,8 @@
                 "${workspaceFolder}/deps/libmediasoupclient/deps/libsdptransform/include",
                 "${workspaceFolder}/deps/webrtc/include",
                 "${workspaceFolder}/deps/webrtc/include/third_party/abseil-cpp",
-                "${workspaceFolder}/deps/webrtc/include/third_party/libyuv/include"
+                "${workspaceFolder}/deps/webrtc/include/third_party/libyuv/include",
+                "${workspaceFolder}/deps/webrtc/include/third_party/ffmpeg"
             ],
             "defines": [
                 "WEBRTC_POSIX"

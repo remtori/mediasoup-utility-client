@@ -91,6 +91,13 @@ pub type OnVideoFrame = ::std::option::Option<
 pub type OnAudioData = ::std::option::Option<
     unsafe extern "C" fn(ctx: *mut ::std::os::raw::c_void, audio_data: MscAudioData),
 >;
+pub type OnVideoWrite = ::std::option::Option<
+    unsafe extern "C" fn(
+        opaque: *mut ::std::os::raw::c_void,
+        buffer: *mut u8,
+        buffer_size: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int,
+>;
 extern "C" {
     pub fn msc_initialize(arg1: WriteLog, arg2: PushError);
     pub fn msc_cleanup();
@@ -157,6 +164,15 @@ extern "C" {
         rtp_parameters: *const ::std::os::raw::c_char,
         ctx: *mut ::std::os::raw::c_void,
         callback: OnAudioData,
+    ) -> *mut MscConsumerSink;
+    pub fn msc_create_video_writer(
+        device: *mut MscDevice,
+        transport: *mut MscTransport,
+        id: *const ::std::os::raw::c_char,
+        producer_id: *const ::std::os::raw::c_char,
+        rtp_parameters: *const ::std::os::raw::c_char,
+        ctx: *mut ::std::os::raw::c_void,
+        callback: OnVideoWrite,
     ) -> *mut MscConsumerSink;
     pub fn msc_free_sink(sink: *mut MscConsumerSink);
 }

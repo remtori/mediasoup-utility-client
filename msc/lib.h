@@ -122,6 +122,7 @@ EXPORT void msc_supply_audio(MscDevice* device, MscProducer* producer, MscAudioD
 
 typedef void (*OnVideoFrame)(void* ctx, MscVideoFrame video_frame);
 typedef void (*OnAudioData)(void* ctx, MscAudioData audio_data);
+typedef int (*OnVideoWrite)(void* opaque, uint8_t* buffer, int buffer_size);
 
 EXPORT MscConsumerSink* msc_create_video_sink(
     MscDevice* device,
@@ -140,6 +141,15 @@ EXPORT MscConsumerSink* msc_create_audio_sink(
     const char* rtp_parameters,
     void* ctx,
     OnAudioData callback) NOEXCEPT;
+
+EXPORT MscConsumerSink* msc_create_video_writer(
+    MscDevice* device,
+    MscTransport* transport,
+    const char* id,
+    const char* producer_id,
+    const char* rtp_parameters,
+    void* ctx,
+    OnVideoWrite callback) NOEXCEPT;
 
 EXPORT void msc_free_sink(MscConsumerSink* sink) NOEXCEPT;
 

@@ -1,12 +1,13 @@
 #include "lib.h"
 
+#include "./common.hpp"
 #include "./device.hpp"
 #include "./media_sink.hpp"
+#include "./video_writer.hpp"
 
 #include <string_view>
 #include <unordered_map>
 
-#include <fmt/core.h>
 #include <json.hpp>
 
 #include <MediaSoupClientErrors.hpp>
@@ -16,20 +17,10 @@
 #include <rtc_base/ssl_adapter.h>
 #include <system_wrappers/include/clock.h>
 
-static WriteLog s_write_fn = nullptr;
+WriteLog s_write_fn = nullptr;
 static PushError s_push_error_fn = nullptr;
 
 namespace {
-
-template<typename... T>
-static inline void println(::fmt::format_string<T...> fmt, T&&... args)
-{
-    if (!s_write_fn)
-        return;
-
-    std::string string = ::fmt::vformat(fmt, ::fmt::make_format_args(args...));
-    s_write_fn(string.c_str(), string.size());
-}
 
 static void handleError()
 {
@@ -461,6 +452,39 @@ MscConsumerSink* msc_create_audio_sink(
 
         auto* sink = new impl::AudioSink(consumer, user_ctx, on_audio_data);
         dynamic_cast<webrtc::AudioTrackInterface*>(consumer->GetTrack())->AddSink(sink);
+
+        return reinterpret_cast<MscConsumerSink*>(sink);
+    } catch (...) {
+        handleError();
+        return nullptr;
+    }
+}
+
+MscConsumerSink* msc_create_video_writer(
+    MscDevice* in_device,
+    MscTransport* in_transport,
+    const char* id,
+    const char* producer_id,
+    const char* rtp_parameters,
+    void* ctx,
+    OnVideoWrite callback) noexcept
+{
+    try {
+        println("Transport::create_video_writer()");
+
+        auto* device = reinterpret_cast<impl::Device*>(in_device);
+        auto* recv_transport = reinterpret_cast<mediasoupclient::RecvTransport*>(in_transport);
+
+        auto parsed_rtp_parameters = nlohmann::json::parse(rtp_parameters);
+        auto* consumer = recv_transport->Consume(
+            device,
+            id,
+            producer_id,
+            "video",
+            &parsed_rtp_parameters);
+
+        auto* sink = new impl::VideoWriter(consumer, ctx, callback);
+        dynamic_cast<webrtc::VideoTrackInterface*>(consumer->GetTrack())->AddOrUpdateSink(sink, {});
 
         return reinterpret_cast<MscConsumerSink*>(sink);
     } catch (...) {
