@@ -1,6 +1,6 @@
 [submodule "deps/libmediasoupclient"]
 	path = deps/libmediasoupclient
-	url = https://github.com/versatica/libmediasoupclient
+	url = https://github.com/remtori/libmediasoupclient
 	branch = m112
 [submodule "deps/fmt"]
 	path = deps/fmt
