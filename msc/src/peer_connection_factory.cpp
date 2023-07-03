@@ -578,7 +578,7 @@ void FakeAudioCaptureModule::SendFrameP()
     current_mic_level_ = current_mic_level;
 }
 
-namespace impl {
+namespace msc {
 
 webrtc::PeerConnectionFactoryInterface* peer_connection_factory()
 {

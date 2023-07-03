@@ -36,6 +36,11 @@ public:
         m_thread.join();
     }
 
+    std::thread::id thread_id() const
+    {
+        return m_thread.get_id();
+    }
+
     /**
      * Push a function with zero or more arguments, but no return value, into the task queue. Does not return a future, so the user must use wait_for_tasks() or some other method to ensure that the task finishes executing, otherwise bad things will happen.
      *
@@ -45,9 +50,15 @@ public:
     template<typename F, typename... A>
     void push_task(F&& task, A&&... args)
     {
+        auto task_fn = std::bind(std::forward<F>(task), std::forward<A>(args)...);
+        if (m_thread.get_id() == std::this_thread::get_id()) {
+            task_fn();
+            return;
+        }
+
         {
             const std::scoped_lock tasks_lock(m_tasks_mutex);
-            m_tasks.push(std::bind(std::forward<F>(task), std::forward<A>(args)...)); // cppcheck-suppress ignoredReturnValue
+            m_tasks.push(task_fn); // cppcheck-suppress ignoredReturnValue
         }
         m_task_available_cv.notify_one();
     }

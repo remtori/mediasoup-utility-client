@@ -3,7 +3,7 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/msc",
+                "${workspaceFolder}/msc/include",
                 "${workspaceFolder}/deps/fmt/include",
                 "${workspaceFolder}/deps/libmediasoupclient/include",
                 "${workspaceFolder}/deps/libmediasoupclient/deps/libsdptransform/include",
