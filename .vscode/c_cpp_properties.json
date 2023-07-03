@@ -10,10 +10,13 @@
                 "${workspaceFolder}/deps/webrtc/include",
                 "${workspaceFolder}/deps/webrtc/include/third_party/abseil-cpp",
                 "${workspaceFolder}/deps/webrtc/include/third_party/libyuv/include",
-                "${workspaceFolder}/deps/webrtc/include/third_party/ffmpeg"
+                "${workspaceFolder}/deps/webrtc/include/third_party/ffmpeg",
+				"${workspaceFolder}/deps/websocketpp",
             ],
             "defines": [
-                "WEBRTC_POSIX"
+                "WEBRTC_POSIX",
+				"ASIO_STANDALONE",
+				"ASIO_SEPARATE_COMPILATION",
             ],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",

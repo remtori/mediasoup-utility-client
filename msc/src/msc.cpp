@@ -1,7 +1,6 @@
 #include "msc/msc.hpp"
 
 #include "./assert.hpp"
-#include "./common.hpp"
 #include "./media_sink.hpp"
 
 #include <MediaSoupClientErrors.hpp>
@@ -22,9 +21,9 @@ const std::string kVideo = "video";
 
 class FFIMediasoupLogHandler : public mediasoupclient::Logger::LogHandlerInterface {
 public:
-    void OnLog(mediasoupclient::Logger::LogLevel level, char* payload, size_t len) override
+    void OnLog(mediasoupclient::Logger::LogLevel level, char* payload, size_t) override
     {
-        println("[MS]({}): {}", static_cast<int>(level), std::string_view(payload, len));
+        printf("[MS](%d): %s", static_cast<int>(level), payload);
     }
 };
 
@@ -70,9 +69,21 @@ public:
         return true;
     }
 
-    const nlohmann::json& rtp_capabilities() const noexcept override { return m_device.GetRtpCapabilities(); }
+    const nlohmann::json& rtp_capabilities() const noexcept override
+    {
+        if (!m_device.IsLoaded())
+            return nullptr;
 
-    bool can_produce(MediaKind kind) noexcept override { return m_device.CanProduce(kind == MediaKind::Audio ? kAudio : kAudio); }
+        return m_device.GetRtpCapabilities();
+    }
+
+    bool can_produce(MediaKind kind) noexcept override
+    {
+        if (!m_device.IsLoaded())
+            return false;
+
+        return m_device.CanProduce(kind == MediaKind::Audio ? kAudio : kAudio);
+    }
 
     void ensure_transport(TransportKind kind) noexcept override { (void)get_or_create_transport(kind); }
 

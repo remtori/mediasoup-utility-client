@@ -12,10 +12,9 @@ target_sources(${PROJECT_NAME} PRIVATE
 	include/msc/json.hpp
 	include/msc/msc.hpp
 	src/assert.hpp
-	src/common.hpp
-	src/msc.cpp
     src/media_sink.hpp
     src/media_sink.cpp
+	src/msc.cpp
     src/peer_connection_factory.cpp
 )
 
@@ -33,6 +32,8 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     fmt::fmt
     mediasoupclient
+	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
+	$<$<NOT:$<PLATFORM_ID:Windows>>:X11>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
