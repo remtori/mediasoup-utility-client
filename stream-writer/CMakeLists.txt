@@ -12,19 +12,18 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
-	${CMAKE_SOURCE_DIR}/msc/include
-	${CMAKE_SOURCE_DIR}/deps/websocketpp
+
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-	asio
     msc
+	fmt::fmt
+	libhv
 	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-	ASIO_STANDALONE
-	ASIO_SEPARATE_COMPILATION
+
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE

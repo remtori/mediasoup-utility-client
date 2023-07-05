@@ -12,6 +12,7 @@
 
 namespace msc {
 
+static const ::nlohmann::json s_null_json = nullptr;
 webrtc::PeerConnectionFactoryInterface* peer_connection_factory();
 
 namespace {
@@ -72,7 +73,7 @@ public:
     const nlohmann::json& rtp_capabilities() const noexcept override
     {
         if (!m_device.IsLoaded())
-            return nullptr;
+            return s_null_json;
 
         return m_device.GetRtpCapabilities();
     }

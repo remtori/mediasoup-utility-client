@@ -5,9 +5,6 @@
 [submodule "deps/fmt"]
 	path = deps/fmt
 	url = https://github.com/fmtlib/fmt
-[submodule "deps/asio/src"]
-	path = deps/asio/src
-	url = https://github.com/chriskohlhoff/asio
-[submodule "deps/websocketpp"]
-	path = deps/websocketpp
-	url = https://github.com/zaphoyd/websocketpp
+[submodule "deps/libhv/src"]
+	path = deps/libhv/src
+	url = https://github.com/ithewei/libhv

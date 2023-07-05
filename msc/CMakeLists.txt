@@ -18,8 +18,10 @@ target_sources(${PROJECT_NAME} PRIVATE
     src/peer_connection_factory.cpp
 )
 
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-	include
+target_include_directories(${PROJECT_NAME} SYSTEM
+PUBLIC
+	${CMAKE_CURRENT_SOURCE_DIR}/include
+PRIVATE
     ${CMAKE_SOURCE_DIR}/deps/fmt/include
     ${CMAKE_SOURCE_DIR}/deps/libmediasoupclient/include
     ${CMAKE_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include
