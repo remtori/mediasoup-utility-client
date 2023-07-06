@@ -12,4 +12,5 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
 add_subdirectory(deps)
 add_subdirectory(msc)
+add_subdirectory(common)
 add_subdirectory(stream-writer)

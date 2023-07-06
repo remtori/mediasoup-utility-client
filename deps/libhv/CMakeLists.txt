@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 SET(LIB_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/build/lib/libhv_static.a)
 
 add_custom_command(OUTPUT ${LIB_FILE}
-                   COMMAND ${CMAKE_COMMAND} -GNinja -Bbuild
+                   COMMAND ${CMAKE_COMMAND} -GNinja -Bbuild -DWITH_OPENSSL=ON
 				   COMMAND ${CMAKE_COMMAND} --build build
 				   COMMAND ${CMAKE_COMMAND} -E copy_directory build/include ../include
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src)

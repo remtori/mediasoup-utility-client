@@ -8,8 +8,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
-	include/msc/executor.hpp
-	include/msc/json.hpp
 	include/msc/msc.hpp
 	src/assert.hpp
     src/media_sink.hpp
@@ -32,7 +30,7 @@ PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    fmt::fmt
+	common
     mediasoupclient
 	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 	$<$<NOT:$<PLATFORM_ID:Windows>>:X11>

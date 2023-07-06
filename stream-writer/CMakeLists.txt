@@ -15,11 +15,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 )
 
+find_package(OpenSSL REQUIRED)
+
 target_link_libraries(${PROJECT_NAME} PRIVATE
     msc
-	fmt::fmt
-	libhv
-	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
+	common
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

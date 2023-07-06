@@ -7,8 +7,8 @@
 #include <memory>
 #include <optional>
 
-#include "./executor.hpp"
-#include "./json.hpp"
+#include <common/executor.hpp>
+#include <common/json.hpp>
 
 #ifdef _WIN32
 #    ifdef MSC_EXPORTS
