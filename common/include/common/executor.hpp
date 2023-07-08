@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-namespace msc {
+namespace cm {
 
 class [[nodiscard]] Executor {
 public:

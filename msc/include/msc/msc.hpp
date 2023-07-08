@@ -42,7 +42,9 @@ struct EXPORT CreateTransportOptions {
 
 class EXPORT DeviceDelegate {
 public:
-    virtual std::future<CreateTransportOptions> create_server_side_transport(TransportKind kind) noexcept = 0;
+    virtual ~DeviceDelegate() { }
+
+    virtual std::future<CreateTransportOptions> create_server_side_transport(TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept = 0;
     virtual std::future<void> connect_transport(const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept = 0;
 
     virtual std::future<std::string> connect_producer(const std::string& transport_id, MediaKind kind, const nlohmann::json& rtp_parameters) noexcept = 0;
@@ -86,7 +88,7 @@ public:
 
 class EXPORT Device {
 public:
-    static std::shared_ptr<Device> create(std::shared_ptr<Executor> executor, std::shared_ptr<DeviceDelegate> delegate) noexcept;
+    static std::shared_ptr<Device> create(std::shared_ptr<cm::Executor> executor, std::shared_ptr<DeviceDelegate> delegate) noexcept;
 
     virtual ~Device() { }
 
@@ -97,8 +99,8 @@ public:
 
     virtual void ensure_transport(TransportKind kind) noexcept = 0;
 
-    virtual void create_video_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer) noexcept = 0;
-    virtual void create_audio_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer) noexcept = 0;
+    virtual void create_video_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer) noexcept = 0;
+    virtual void create_audio_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer) noexcept = 0;
 
     virtual void close_video_sink(const std::shared_ptr<VideoConsumer>&) noexcept = 0;
     virtual void close_audio_sink(const std::shared_ptr<AudioConsumer>&) noexcept = 0;
