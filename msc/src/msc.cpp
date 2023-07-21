@@ -224,7 +224,7 @@ void DeviceImpl::create_audio_sink(const std::string& consumer_id, const std::st
 
 void DeviceImpl::close_sink(const void* consumer) noexcept
 {
-    m_executor->push_task([=]() {
+    m_executor->push_task([this, consumer]() {
         for (auto it = m_sinks.begin(); it != m_sinks.end(); it++) {
             auto& sink = *it;
             if (!sink->is_user_ptr_equal(consumer))
@@ -239,7 +239,7 @@ void DeviceImpl::close_sink(const void* consumer) noexcept
 
 void DeviceImpl::OnTransportClose(mediasoupclient::Consumer* consumer)
 {
-    m_executor->push_task([=] {
+    m_executor->push_task([this, consumer] {
         for (auto it = m_sinks.begin(); it != m_sinks.end(); it++) {
             auto& sink = *it;
             if (!sink->is_consumer_equal(consumer))

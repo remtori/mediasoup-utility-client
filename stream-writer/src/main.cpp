@@ -4,11 +4,6 @@
 #include <fmt/format.h>
 #include <msc/msc.hpp>
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-}
-
 #include "./video-writer.hpp"
 
 static const std::string ENDPOINT = "https://portal-mediasoup-dev.service.zingplay.com";
@@ -95,9 +90,6 @@ private:
 
 int main(int argc, const char** argv)
 {
-    av_register_all();
-    avcodec_register_all();
-
     const std::string streamer_id = argc > 1 ? argv[1] : "1222655792";
     fmt::println("started watching {}", streamer_id);
 

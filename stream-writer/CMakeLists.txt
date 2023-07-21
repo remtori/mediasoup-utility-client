@@ -41,5 +41,5 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-    -Wall -Wextra -Wpedantic -Wno-deprecated-declarations
+    -Wall -Wextra -Wpedantic
 )
