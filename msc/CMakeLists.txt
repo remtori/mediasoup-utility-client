@@ -9,7 +9,6 @@ add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
 	include/msc/msc.hpp
-	src/assert.hpp
     src/media_sink.hpp
     src/media_sink.cpp
 	src/msc.cpp
