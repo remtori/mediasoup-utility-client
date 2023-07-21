@@ -4,6 +4,13 @@
 #include <fmt/format.h>
 #include <msc/msc.hpp>
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+}
+
+#include "./video-writer.hpp"
+
 static const std::string ENDPOINT = "https://portal-mediasoup-dev.service.zingplay.com";
 static const std::string BEARER_AUTH = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI5IiwicmlkIjoiOSIsImlhdCI6MTY4NzI1MzQ5MiwiZXhwIjoxNzg3MjU3MDkyfQ.q099PYyLjLuGC7nWlOuEFPDyKEmgqSrIWwHEqsgLXyc";
 
@@ -28,10 +35,10 @@ public:
 
         msc::CreateTransportOptions options;
         json.at("id").get_to(options.id);
-        options.ice_parameters = json.value("iceParameters", nullptr);
-        options.ice_candidates = json.value("iceCandidates", nullptr);
-        options.dtls_parameters = json.value("dtlsParameters", nullptr);
-        options.sctp_parameters = json.value("sctpParameters", nullptr);
+        options.ice_parameters = json.value("iceParameters", nlohmann::json(nullptr));
+        options.ice_candidates = json.value("iceCandidates", nlohmann::json(nullptr));
+        options.dtls_parameters = json.value("dtlsParameters", nlohmann::json(nullptr));
+        options.sctp_parameters = json.value("sctpParameters", nlohmann::json(nullptr));
 
         std::promise<msc::CreateTransportOptions> promise;
         promise.set_value(options);
@@ -86,9 +93,13 @@ private:
     std::string m_streamer_id;
 };
 
-int main()
+int main(int argc, const char** argv)
 {
-    const std::string streamer_id = "1222655792";
+    av_register_all();
+    avcodec_register_all();
+
+    const std::string streamer_id = argc > 1 ? argv[1] : "1222655792";
+    fmt::println("started watching {}", streamer_id);
 
     auto event_loop_thread = std::make_shared<hv::EventLoopThread>();
     event_loop_thread->start();
@@ -99,27 +110,37 @@ int main()
     auto resp = client->get(ENDPOINT + "/live/" + streamer_id).get();
     auto rtp_capabilities = resp->GetJson();
 
-    fmt::println("rtp_capabilities {}", rtp_capabilities.dump(2));
+    // fmt::println("rtp_capabilities {}", rtp_capabilities.dump(2));
 
     auto executor = std::make_shared<cm::Executor>();
     auto device = msc::Device::create(executor, std::make_shared<Signaling>(client, streamer_id));
 
     device->load(rtp_capabilities);
+    fmt::println("creating recv transport...");
     device->ensure_transport(msc::TransportKind::Recv);
 
-    resp = client->post(ENDPOINT + "/live/" + streamer_id + "/consume", device->rtp_capabilities()).get();
+    fmt::println("consuming stream");
+    resp = client->post(ENDPOINT + "/live/" + streamer_id + "/consume", { { "rtpCapabilities", device->rtp_capabilities() } }).get();
     auto consumers = resp->GetJson();
 
     for (auto& consumer : consumers) {
         auto kind = consumer.at("kind").get<std::string>();
+        auto type = consumer.at("producerType").get<std::string>();
 
-        if (kind == "video") {
-            device->create_video_sink(consumer.at("consumerId").get<std::string>(), consumer.at("producerId").get<std::string>(), consumer.at("rtpParameters"), nullptr);
+        fmt::println("consumer: kind={} type={}", kind, type);
+        if (kind == "video" && type == "screen") {
+            fmt::println("got video screen");
+            device->create_video_sink(
+                consumer.at("consumerId").get<std::string>(),
+                consumer.at("producerId").get<std::string>(),
+                consumer.at("rtpParameters"),
+                std::make_shared<VideoWriter>(std::string("output/stream-") + streamer_id + ".mkv"));
         }
     }
 
+    fmt::println("resuming..");
     client->post(ENDPOINT + "/live/" + streamer_id + "/resume", nlohmann::json::object());
 
-    event_loop_thread->stop();
+    // event_loop_thread->stop();
     event_loop_thread->join();
 }

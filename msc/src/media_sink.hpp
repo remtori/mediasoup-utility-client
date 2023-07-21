@@ -21,6 +21,12 @@ public:
         : m_consumer(std::move(consumer))
         , m_user_consumer(std::move(user_consumer))
     {
+        dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->AddSink(this);
+    }
+
+    ~AudioSinkImpl()
+    {
+        dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
     }
 
     void OnData(
@@ -58,6 +64,12 @@ public:
         : m_consumer(std::move(consumer))
         , m_user_consumer(std::move(user_consumer))
     {
+        dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->AddOrUpdateSink(this, {});
+    }
+
+    ~VideoSinkImpl()
+    {
+        dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
     }
 
     void OnFrame(const webrtc::VideoFrame& frame) override;

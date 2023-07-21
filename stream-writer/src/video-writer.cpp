@@ -1,35 +1,23 @@
-#include "./video_writer.hpp"
+#include "./video-writer.hpp"
 
-#include "./common.hpp"
+#include <fmt/format.h>
 
-#include <stdexcept>
-
-static const int io_buffer_size = 4096 * 4;
-
-namespace impl {
-
-VideoWriter::VideoWriter(mediasoupclient::Consumer* consumer, void* user_ctx, WriteFn write_fn)
-    : m_consumer(consumer)
+VideoWriter::VideoWriter(std::string filepath)
+    : m_filepath(std::move(filepath))
 {
     m_packet = av_packet_alloc();
-    m_io_buffer = static_cast<uint8_t*>(av_malloc(io_buffer_size));
 
     m_format_ctx = avformat_alloc_context();
     if (!m_format_ctx) {
         throw std::runtime_error("ffmpeg failed to create format context");
     }
 
-    m_format_ctx->pb = avio_alloc_context(m_io_buffer, io_buffer_size, 0, user_ctx, nullptr, write_fn, nullptr);
-    if (!m_format_ctx->pb) {
-        throw std::runtime_error("ffmpeg avio_alloc_context() failed");
-    }
-
-    m_format_ctx->oformat = av_guess_format(nullptr, "output.mp4", nullptr);
+    m_format_ctx->oformat = av_guess_format(nullptr, m_filepath.c_str(), nullptr);
 
     const AVCodec* codec = nullptr;
     void* iterator = nullptr;
     while ((codec = av_codec_iterate(&iterator)) != nullptr) {
-        println("Codec is_encoder={} name={} long_name={} wrapper_name={}",
+        fmt::println("Codec is_encoder={} name={} long_name={} wrapper_name={}",
             av_codec_is_encoder(codec),
             codec->name == nullptr ? "" : codec->name,
             codec->long_name == nullptr ? "" : codec->long_name,
@@ -39,16 +27,26 @@ VideoWriter::VideoWriter(mediasoupclient::Consumer* consumer, void* user_ctx, Wr
 
 VideoWriter::~VideoWriter()
 {
-    avcodec_free_context(&m_codec_ctx);
-    avformat_free_context(m_format_ctx);
-    av_frame_free(&m_frame);
-    av_packet_free(&m_packet);
-    av_free(m_io_buffer);
+    if (m_packet) {
+        av_packet_free(&m_packet);
+    }
+
+    if (m_codec_ctx) {
+        avcodec_free_context(&m_codec_ctx);
+    }
+
+    if (m_format_ctx) {
+        avformat_free_context(m_format_ctx);
+    }
+
+    if (m_frame) {
+        av_frame_free(&m_frame);
+    }
 }
 
-void VideoWriter::setup(int fps, int width, int height)
+void VideoWriter::init_ffmpeg(int width, int height, int fps)
 {
-    println("setting up fps={} res={}x{}", fps, width, height);
+    fmt::println("setting up fps={} res={}x{}", fps, width, height);
 
     m_frame = av_frame_alloc();
     m_frame->format = AV_PIX_FMT_YUV420P;
@@ -82,44 +80,64 @@ void VideoWriter::setup(int fps, int width, int height)
     m_codec_ctx->height = height;
 
     if (avcodec_open2(m_codec_ctx, nullptr, nullptr) < 0) {
-        throw std::runtime_error(std::string("ffmpeg open codec context failed"));
+        throw std::runtime_error("ffmpeg open codec context failed");
+    }
+
+    if (avio_open(&m_format_ctx->pb, m_filepath.c_str(), AVIO_FLAG_WRITE) < 0) {
+        throw std::runtime_error("ffmpeg failed to open file");
     }
 
     m_stream = avformat_new_stream(m_format_ctx, nullptr);
     m_stream->time_base = AVRational { 1, fps };
 
     if (avcodec_parameters_from_context(m_stream->codecpar, m_codec_ctx) < 0) {
-        throw std::runtime_error(std::string("ffmpeg copy params failed"));
+        throw std::runtime_error("ffmpeg copy params failed");
     }
 
-    if (int ret = avformat_write_header(m_format_ctx, nullptr); ret < 0) {
-        throw std::runtime_error(std::string("ffmpeg write header failed"));
+    if (avformat_write_header(m_format_ctx, nullptr) < 0) {
+        throw std::runtime_error("ffmpeg write header failed");
     }
 
-    println("setting up finish ok");
+    fmt::println("setting up finish ok");
 }
 
-void VideoWriter::OnFrame(const webrtc::VideoFrame& frame)
+void VideoWriter::on_close()
 {
-    if (m_frame_count == 1)
-        setup(30, frame.width(), frame.height());
-
-    println("got a frame");
-    auto i420_buffer = frame.video_frame_buffer()->ToI420();
-
-    m_frame->data[0] = const_cast<uint8_t*>(i420_buffer->DataY());
-    m_frame->data[1] = const_cast<uint8_t*>(i420_buffer->DataU());
-    m_frame->data[2] = const_cast<uint8_t*>(i420_buffer->DataV());
-    m_frame->linesize[0] = i420_buffer->StrideY();
-    m_frame->linesize[1] = i420_buffer->StrideU();
-    m_frame->linesize[2] = i420_buffer->StrideV();
-    m_frame->pts = m_frame_count;
-
-    int ret = avcodec_send_frame(m_codec_ctx, m_frame);
-    if (ret < 0) {
-        throw std::runtime_error(std::string("ffmpeg submit frame encoding failed"));
+    for (;;) {
+        avcodec_send_frame(m_codec_ctx, nullptr);
+        if (avcodec_receive_packet(m_codec_ctx, m_packet) == 0) {
+            av_interleaved_write_frame(m_format_ctx, m_packet);
+            av_packet_unref(m_packet);
+        } else {
+            break;
+        }
     }
 
+    av_write_trailer(m_format_ctx);
+    int err = avio_close(m_format_ctx->pb);
+    if (err < 0) {
+        throw std::runtime_error(std::string("Failed to close file") + std::to_string(err));
+    }
+}
+
+void VideoWriter::on_video_frame(const msc::VideoFrame& frame)
+{
+    if (m_frame_count == 1)
+        init_ffmpeg(frame.width, frame.height, 30);
+
+    m_frame->data[0] = const_cast<uint8_t*>(frame.data_y);
+    m_frame->data[1] = const_cast<uint8_t*>(frame.data_u);
+    m_frame->data[2] = const_cast<uint8_t*>(frame.data_v);
+    m_frame->linesize[0] = frame.stride_y;
+    m_frame->linesize[1] = frame.stride_u;
+    m_frame->linesize[2] = frame.stride_v;
+    m_frame->pts = m_frame_count++;
+
+    if (avcodec_send_frame(m_codec_ctx, m_frame) < 0) {
+        throw std::runtime_error("ffmpeg submit frame encoding failed");
+    }
+
+    int ret = 0;
     while (ret >= 0) {
         ret = avcodec_receive_packet(m_codec_ctx, m_packet);
 
@@ -131,7 +149,7 @@ void VideoWriter::OnFrame(const webrtc::VideoFrame& frame)
 
         av_packet_rescale_ts(m_packet, m_codec_ctx->time_base, m_stream->time_base);
         m_packet->stream_index = m_stream->index;
-        m_packet->pts = m_frame_count++;
+
         ret = av_interleaved_write_frame(m_format_ctx, m_packet);
         if (ret < 0) {
             throw std::runtime_error(std::string("ffmpeg writing frame failed"));
@@ -139,6 +157,4 @@ void VideoWriter::OnFrame(const webrtc::VideoFrame& frame)
 
         av_packet_unref(m_packet);
     }
-}
-
 }

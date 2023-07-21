@@ -133,8 +133,8 @@ private:
     std::shared_ptr<DeviceDelegate> m_delegate;
 
     mediasoupclient::Device m_device {};
-    std::unique_ptr<mediasoupclient::SendTransport> m_send_transport {};
-    std::unique_ptr<mediasoupclient::RecvTransport> m_recv_transport {};
+    std::unique_ptr<mediasoupclient::SendTransport> m_send_transport { nullptr };
+    std::unique_ptr<mediasoupclient::RecvTransport> m_recv_transport { nullptr };
 
     std::vector<std::unique_ptr<SinkImpl>> m_sinks {};
 };
@@ -178,6 +178,8 @@ const mediasoupclient::Transport& DeviceImpl::get_or_create_transport(TransportK
 
         return *m_recv_transport;
     }
+
+    throw new std::runtime_error("unreachable reached!!!");
 }
 
 void DeviceImpl::create_video_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> user_consumer) noexcept
