@@ -96,6 +96,7 @@ public:
     virtual const nlohmann::json& rtp_capabilities() const noexcept = 0;
 
     virtual bool can_produce(MediaKind) noexcept = 0;
+    virtual void stop() noexcept = 0;
 
     virtual void ensure_transport(TransportKind kind) noexcept = 0;
 

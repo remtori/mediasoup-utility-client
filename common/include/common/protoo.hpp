@@ -63,4 +63,4 @@ private:
     std::vector<std::function<void()>> m_buffered_request {};
 };
 
-};
+}

@@ -60,6 +60,11 @@ public:
     {
     }
 
+    ~DeviceImpl()
+    {
+        stop();
+    }
+
     bool load(const nlohmann::json& rtp_capabilities) noexcept override
     {
         if (m_device.IsLoaded())
@@ -77,6 +82,18 @@ public:
         return m_device.GetRtpCapabilities();
     }
 
+    void stop() noexcept override
+    {
+        m_sinks.clear();
+        if (m_send_transport)
+            m_send_transport->Close();
+        m_send_transport = nullptr;
+
+        if (m_recv_transport)
+            m_recv_transport->Close();
+        m_recv_transport = nullptr;
+    }
+
     bool can_produce(MediaKind kind) noexcept override
     {
         if (!m_device.IsLoaded())
@@ -85,7 +102,13 @@ public:
         return m_device.CanProduce(kind == MediaKind::Audio ? kAudio : kAudio);
     }
 
-    void ensure_transport(TransportKind kind) noexcept override;
+    void ensure_transport(TransportKind kind) noexcept
+    {
+        m_executor->submit(
+                      [](DeviceImpl* self, TransportKind kind) { self->ensure_transport_impl(kind); },
+                      this, kind)
+            .wait();
+    }
 
     void create_video_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer) noexcept override;
     void create_audio_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer) noexcept override;
@@ -94,6 +117,7 @@ public:
     void close_audio_sink(const std::shared_ptr<AudioConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
 
 private:
+    void ensure_transport_impl(TransportKind kind);
     void close_sink(const void* consumer) noexcept;
 
 public:
@@ -137,7 +161,7 @@ private:
     std::vector<std::unique_ptr<SinkImpl>> m_sinks {};
 };
 
-void DeviceImpl::ensure_transport(TransportKind kind) noexcept
+void DeviceImpl::ensure_transport_impl(TransportKind kind)
 {
     if (kind == TransportKind::Send && m_send_transport)
         return;
@@ -145,37 +169,35 @@ void DeviceImpl::ensure_transport(TransportKind kind) noexcept
     if (kind == TransportKind::Recv && m_recv_transport)
         return;
 
-    m_executor->push_task([this, kind]() {
-        auto transport_options = m_delegate->create_server_side_transport(kind, this->rtp_capabilities()).get();
+    auto transport_options = m_delegate->create_server_side_transport(kind, this->rtp_capabilities()).get();
 
-        mediasoupclient::PeerConnection::Options options;
-        options.factory = peer_connection_factory();
+    mediasoupclient::PeerConnection::Options options;
+    options.factory = peer_connection_factory();
 
-        switch (kind) {
-        case TransportKind::Send:
-            m_send_transport = std::unique_ptr<mediasoupclient::SendTransport>(
-                m_device.CreateSendTransport(this,
-                    transport_options.id,
-                    transport_options.ice_parameters,
-                    transport_options.ice_candidates,
-                    transport_options.dtls_parameters,
-                    transport_options.sctp_parameters,
-                    &options));
+    switch (kind) {
+    case TransportKind::Send:
+        m_send_transport = std::unique_ptr<mediasoupclient::SendTransport>(
+            m_device.CreateSendTransport(this,
+                transport_options.id,
+                transport_options.ice_parameters,
+                transport_options.ice_candidates,
+                transport_options.dtls_parameters,
+                transport_options.sctp_parameters,
+                &options));
 
-            break;
-        case TransportKind::Recv:
-            m_recv_transport = std::unique_ptr<mediasoupclient::RecvTransport>(
-                m_device.CreateRecvTransport(this,
-                    transport_options.id,
-                    transport_options.ice_parameters,
-                    transport_options.ice_candidates,
-                    transport_options.dtls_parameters,
-                    transport_options.sctp_parameters,
-                    &options));
+        break;
+    case TransportKind::Recv:
+        m_recv_transport = std::unique_ptr<mediasoupclient::RecvTransport>(
+            m_device.CreateRecvTransport(this,
+                transport_options.id,
+                transport_options.ice_parameters,
+                transport_options.ice_candidates,
+                transport_options.dtls_parameters,
+                transport_options.sctp_parameters,
+                &options));
 
-            break;
-        }
-    });
+        break;
+    }
 }
 
 void DeviceImpl::create_video_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> user_consumer) noexcept
@@ -185,7 +207,7 @@ void DeviceImpl::create_video_sink(const std::string& consumer_id, const std::st
                               const std::string& producer_id,
                               const nlohmann::json& rtp_parameters,
                               std::shared_ptr<VideoConsumer> user_consumer) {
-        ensure_transport(TransportKind::Recv);
+        ensure_transport_impl(TransportKind::Recv);
 
         auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
             m_recv_transport->Consume(
@@ -207,7 +229,7 @@ void DeviceImpl::create_audio_sink(const std::string& consumer_id, const std::st
                               const std::string& producer_id,
                               const nlohmann::json& rtp_parameters,
                               std::shared_ptr<AudioConsumer> user_consumer) {
-        ensure_transport(TransportKind::Recv);
+        ensure_transport_impl(TransportKind::Recv);
 
         auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
             m_recv_transport->Consume(

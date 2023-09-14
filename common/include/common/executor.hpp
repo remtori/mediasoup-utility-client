@@ -17,7 +17,7 @@ namespace cm {
 class [[nodiscard]] Executor {
 public:
     Executor()
-        : m_thread(std::thread(&Executor::worker, this))
+        : m_thread(&Executor::worker, this)
     {
     }
 
@@ -151,7 +151,7 @@ private:
     mutable std::mutex m_tasks_mutex {};
 
     bool m_waiting { false };
-    bool m_workers_running { false };
+    bool m_workers_running { true };
 };
 
 class ExecutorGroup {
