@@ -8,10 +8,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
-	include/common/json.hpp
-	include/common/executor.hpp
-	include/common/http_client.hpp
-	include/common/protoo.hpp
 	src/http_client.cpp
 	src/protoo.cpp
 )

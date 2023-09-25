@@ -185,6 +185,9 @@ int main(int argc, const char** argv)
     }
 
     client->headers()["Authorization"] = "Bearer " + tokenJson.at("token").get<std::string>();
+    auto executor = std::make_shared<cm::Executor>();
+    auto viewer = std::make_shared<Viewer>(client, executor);
+    viewer->watch("1174393215");
 
     // auto buttons = ftxui::Container::Vertical({
     //     ftxui::Container::Horizontal({

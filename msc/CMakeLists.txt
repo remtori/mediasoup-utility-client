@@ -21,6 +21,7 @@ target_include_directories(${PROJECT_NAME} SYSTEM
 PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}/include
 PRIVATE
+	${CMAKE_SOURCE_DIR}/common/include
     ${CMAKE_SOURCE_DIR}/deps/fmt/include
     ${CMAKE_SOURCE_DIR}/deps/libmediasoupclient/include
     ${CMAKE_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include
@@ -31,10 +32,15 @@ PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-	common
     mediasoupclient
 	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 	$<$<NOT:$<PLATFORM_ID:Windows>>:X11>
+	$<$<PLATFORM_ID:Windows>:secur32.lib>
+	$<$<PLATFORM_ID:Windows>:dmoguids>
+	$<$<PLATFORM_ID:Windows>:wmcodecdspuuid>
+	$<$<PLATFORM_ID:Windows>:msdmo>
+	$<$<PLATFORM_ID:Windows>:winmm>
+	$<$<PLATFORM_ID:Windows>:iphlpapi>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
