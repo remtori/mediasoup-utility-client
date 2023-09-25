@@ -22,6 +22,8 @@
 
 namespace msc {
 
+EXPORT void initialize();
+
 enum class EXPORT MediaKind {
     Audio,
     Video,
@@ -65,6 +67,18 @@ struct EXPORT VideoFrame {
     int stride_v;
 };
 
+struct EXPORT MutableVideoFrame {
+    int64_t timestamp_ms;
+    int width;
+    int height;
+    uint8_t* data_y;
+    uint8_t* data_u;
+    uint8_t* data_v;
+    int stride_y;
+    int stride_u;
+    int stride_v;
+};
+
 struct EXPORT AudioData {
     int64_t timestamp_ms;
     int bits_per_sample;
@@ -74,16 +88,74 @@ struct EXPORT AudioData {
     const void* data;
 };
 
+struct EXPORT MutableAudioData {
+    int64_t timestamp_ms;
+    int bits_per_sample;
+    int sample_rate;
+    int number_of_channels;
+    int number_of_frames;
+    void* data;
+};
+
 class EXPORT VideoConsumer {
 public:
+    virtual ~VideoConsumer() = default;
+
     virtual void on_video_frame(const VideoFrame&) = 0;
     virtual void on_close() = 0;
 };
 
 class EXPORT AudioConsumer {
 public:
+    virtual ~AudioConsumer() = default;
+
     virtual void on_audio_consumer(const AudioData&) = 0;
     virtual void on_close() = 0;
+};
+
+class DummyVideoConsumer : public VideoConsumer
+{
+public:
+    DummyVideoConsumer() = default;
+    ~DummyVideoConsumer() = default;
+private:
+    void on_video_frame(const VideoFrame&) final {}
+    void on_close() final {}
+};
+
+class DummyAudioConsumer : public AudioConsumer
+{
+public:
+    DummyAudioConsumer() = default;
+    ~DummyAudioConsumer() = default;
+private:
+    void on_audio_consumer(const AudioData&) final {}
+    void on_close() final {}
+};
+
+class EXPORT VideoSender {
+public:
+    virtual ~VideoSender() = default;
+
+    virtual bool is_closed() = 0;
+
+    virtual std::optional<MutableVideoFrame> adapt_frame(
+        int sourceWidth, int sourceHeight, int64_t timestamp,
+        int* adapted_width, int* adapted_height,
+        int* crop_width, int* crop_height,
+        int* crop_x, int* crop_y)
+        = 0;
+
+    virtual void send_video_frame(MutableVideoFrame) = 0;
+};
+
+class EXPORT AudioSender {
+public:
+    virtual ~AudioSender() = default;
+
+    virtual bool is_closed() = 0;
+
+    virtual void send_audio_data(const MutableAudioData&) = 0;
 };
 
 class EXPORT Device {
@@ -105,6 +177,9 @@ public:
 
     virtual void close_video_sink(const std::shared_ptr<VideoConsumer>&) noexcept = 0;
     virtual void close_audio_sink(const std::shared_ptr<AudioConsumer>&) noexcept = 0;
+
+    virtual std::shared_ptr<VideoSender> create_video_source() noexcept = 0;
+    virtual std::shared_ptr<AudioSender> create_audio_source() noexcept = 0;
 };
 
 }

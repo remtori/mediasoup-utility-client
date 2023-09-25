@@ -8,16 +8,16 @@ namespace cm {
 
 class HttpClient {
 public:
-    HttpClient(std::shared_ptr<hv::EventLoop> loop);
+    explicit HttpClient(std::shared_ptr<hv::EventLoop> loop);
     ~HttpClient() = default;
 
-    ::http_headers& headers() { return m_headers; }
-    const ::http_headers& headers() const { return m_headers; }
+    [[nodiscard]] ::http_headers& headers() { return m_headers; }
+    [[nodiscard]] const ::http_headers& headers() const { return m_headers; }
 
     std::future<std::shared_ptr<HttpResponse>> get(const std::string& url);
     std::future<std::shared_ptr<HttpResponse>> post(const std::string& url, const nlohmann::json& body);
 
-    std::future<std::shared_ptr<HttpResponse>> request(std::shared_ptr<HttpRequest> request);
+    std::future<std::shared_ptr<HttpResponse>> request(const std::shared_ptr<HttpRequest>& request);
 
 private:
     std::shared_ptr<hv::AsyncHttpClient> m_client;

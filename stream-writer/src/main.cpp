@@ -87,7 +87,10 @@ private:
 
 int main(int argc, const char** argv)
 {
-    const std::string streamer_id = argc > 1 ? argv[1] : "1222655792";
+    fmt::println("initializing...");
+    msc::initialize();
+
+    const std::string streamer_id = argc > 1 ? argv[1] : "1174393215";
     fmt::println("started watching {}", streamer_id);
 
     auto event_loop_thread = std::make_shared<hv::EventLoopThread>();
@@ -134,6 +137,18 @@ int main(int argc, const char** argv)
                 consumer.at("producerId").get<std::string>(),
                 consumer.at("rtpParameters"),
                 std::make_shared<VideoWriter>(std::string("output/stream-") + streamer_id + ".mkv"));
+        } else if (type == "audio") {
+            device->create_audio_sink(
+                consumer.at("consumerId").get<std::string>(),
+                consumer.at("producerId").get<std::string>(),
+                consumer.at("rtpParameters"),
+                std::make_shared<msc::DummyAudioConsumer>());
+        } else {
+            device->create_video_sink(
+                consumer.at("consumerId").get<std::string>(),
+                consumer.at("producerId").get<std::string>(),
+                consumer.at("rtpParameters"),
+                std::make_shared<msc::DummyVideoConsumer>());
         }
     }
 

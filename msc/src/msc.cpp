@@ -1,5 +1,6 @@
 #include "msc/msc.hpp"
 
+#include "./media_sender.hpp"
 #include "./media_sink.hpp"
 
 #include <MediaSoupClientErrors.hpp>
@@ -26,27 +27,6 @@ public:
         printf("[MS](%d): %s", static_cast<int>(level), payload);
     }
 };
-
-static void initialize()
-{
-    static std::mutex s_mutex = {};
-    static bool s_initialized = false;
-
-    std::lock_guard<std::mutex> lk(s_mutex);
-    if (s_initialized)
-        return;
-
-    s_initialized = true;
-    rtc::InitializeSSL();
-    rtc::InitRandom(static_cast<int>(rtc::TimeMillis()));
-    // rtc::LogMessage::LogToDebug(rtc::LS_INFO);
-    // rtc::LogMessage::AddLogToStream(new impl::FFIWebrtcLogSink(), rtc::LS_INFO);
-
-    mediasoupclient::Logger::SetLogLevel(mediasoupclient::Logger::LogLevel::LOG_WARN);
-    mediasoupclient::Logger::SetHandler(new FFIMediasoupLogHandler());
-
-    peer_connection_factory();
-}
 
 class DeviceImpl : public Device
     , public mediasoupclient::SendTransport::Listener
@@ -102,7 +82,7 @@ public:
         return m_device.CanProduce(kind == MediaKind::Audio ? kAudio : kAudio);
     }
 
-    void ensure_transport(TransportKind kind) noexcept
+    void ensure_transport(TransportKind kind) noexcept override
     {
         m_executor->submit(
                       [](DeviceImpl* self, TransportKind kind) { self->ensure_transport_impl(kind); },
@@ -116,6 +96,8 @@ public:
     void close_video_sink(const std::shared_ptr<VideoConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
     void close_audio_sink(const std::shared_ptr<AudioConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
 
+    std::shared_ptr<VideoSender> create_video_source() noexcept override;
+    std::shared_ptr<AudioSender> create_audio_source() noexcept override;
 private:
     void ensure_transport_impl(TransportKind kind);
     void close_sink(const void* consumer) noexcept;
@@ -274,6 +256,44 @@ void DeviceImpl::OnTransportClose(mediasoupclient::Consumer* consumer)
     });
 }
 
+std::shared_ptr<VideoSender> DeviceImpl::create_video_source() noexcept
+{
+    ensure_transport_impl(TransportKind::Send);
+
+    auto* source = new rtc::RefCountedObject<::msc::VideoSenderImpl>(2, false);
+    auto track = peer_connection_factory()->CreateVideoTrack("video_track_X", source);
+
+    //m_send_transport->Produce(this, )
+
+    return nullptr;
+}
+
+std::shared_ptr<AudioSender> DeviceImpl::create_audio_source() noexcept
+{
+    return nullptr;
+}
+
+}
+
+void initialize()
+{
+    static std::mutex s_mutex = {};
+    static bool s_initialized = false;
+
+    std::lock_guard<std::mutex> lk(s_mutex);
+    if (s_initialized)
+        return;
+
+    s_initialized = true;
+    rtc::InitializeSSL();
+    rtc::InitRandom(static_cast<int>(rtc::TimeMillis()));
+    // rtc::LogMessage::LogToDebug(rtc::LS_INFO);
+    // rtc::LogMessage::AddLogToStream(new impl::FFIWebrtcLogSink(), rtc::LS_INFO);
+
+    mediasoupclient::Logger::SetLogLevel(mediasoupclient::Logger::LogLevel::LOG_WARN);
+    mediasoupclient::Logger::SetHandler(new FFIMediasoupLogHandler());
+
+    peer_connection_factory();
 }
 
 std::shared_ptr<Device> Device::create(std::shared_ptr<cm::Executor> executor, std::shared_ptr<DeviceDelegate> delegate) noexcept

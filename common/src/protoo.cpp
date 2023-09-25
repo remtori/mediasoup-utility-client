@@ -5,16 +5,15 @@
 namespace cm {
 
 ProtooClient::ProtooClient(std::shared_ptr<hv::EventLoop> loop)
-    : WebSocketClient(loop)
+    : WebSocketClient(std::move(loop))
 {
-    onopen = std::bind(&ProtooClient::on_ws_open, this);
-    onclose = std::bind(&ProtooClient::on_ws_close, this);
-    onmessage = std::bind(&ProtooClient::on_ws_message, this, std::placeholders::_1);
+    onopen = [this] { on_ws_open(); };
+    onclose = [this] { on_ws_close(); };
+    onmessage = [this](auto && PH1) { on_ws_message(std::forward<decltype(PH1)>(PH1)); };
 }
 
-int ProtooClient::connect(const std::string& url, std::vector<std::string> protocols)
+int ProtooClient::connect(const std::string& url)
 {
-
     // reconnect: 1,2,4,8,10,10,10...
     reconn_setting_t reconn;
     reconn_setting_init(&reconn);
@@ -23,14 +22,7 @@ int ProtooClient::connect(const std::string& url, std::vector<std::string> proto
     reconn.delay_policy = 2;
     this->setReconnect(&reconn);
 
-    std::stringstream ss;
-    ss << "protoo";
-    for (auto& protocol : protocols)
-        ss << ", " << protocol;
-
-    http_headers headers;
-    headers["Sec-WebSocket-Protocol"] = ss.str();
-    return this->open(url.c_str(), headers);
+    return this->open(url.c_str());
 }
 
 void ProtooClient::on_ws_open()
@@ -84,7 +76,7 @@ void ProtooClient::on_ws_message(const std::string& raw_msg)
     }
 }
 
-void ProtooClient::on_ws_close()
+void ProtooClient::on_ws_close() const
 {
     if (on_close)
         on_close();
@@ -99,7 +91,16 @@ void ProtooClient::notify(std::string method, nlohmann::json data)
     };
 
     auto raw_body = body.dump();
-    send(raw_body);
+    if (this->isConnected())
+    {
+        send(raw_body);
+    }
+    else
+    {
+        m_buffered_request.emplace_back([this, raw_body = std::move(raw_body)]() {
+            this->send(raw_body);
+        });
+    }
 }
 
 std::future<ProtooResponse> ProtooClient::request(std::string method, nlohmann::json data)
@@ -120,7 +121,16 @@ std::future<ProtooResponse> ProtooClient::request(std::string method, nlohmann::
     }
 
     auto raw_body = body.dump();
-    send(raw_body);
+    if (this->isConnected())
+    {
+        send(raw_body);
+    }
+    else
+    {
+        m_buffered_request.emplace_back([this, raw_body = std::move(raw_body)]() {
+           this->send(raw_body);
+        });
+    }
 
     loop()->setTimeout(10000, [ret](auto) {
         ret->set_exception(std::make_exception_ptr(std::runtime_error("request timeout")));

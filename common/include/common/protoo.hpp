@@ -37,10 +37,10 @@ struct ProtooNotify {
 
 class ProtooClient : private hv::WebSocketClient {
 public:
-    ProtooClient(std::shared_ptr<hv::EventLoop> loop);
-    ~ProtooClient() { }
+    explicit ProtooClient(std::shared_ptr<hv::EventLoop> loop);
+    ~ProtooClient() = default;
 
-    int connect(const std::string& url, std::vector<std::string> protocols);
+    int connect(const std::string& url);
 
     void notify(std::string method, nlohmann::json data);
     std::future<ProtooResponse> request(std::string method, nlohmann::json data);
@@ -53,7 +53,7 @@ public:
 private:
     void on_ws_open();
     void on_ws_message(const std::string& msg);
-    void on_ws_close();
+    void on_ws_close() const;
 
 private:
     std::mutex m_mutex {};

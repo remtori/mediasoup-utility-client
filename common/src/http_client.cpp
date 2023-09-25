@@ -3,7 +3,7 @@
 namespace cm {
 
 HttpClient::HttpClient(std::shared_ptr<hv::EventLoop> loop)
-    : m_client(std::make_shared<hv::AsyncHttpClient>(loop))
+    : m_client(std::make_shared<hv::AsyncHttpClient>(std::move(loop)))
 {
 }
 
@@ -30,12 +30,12 @@ std::future<std::shared_ptr<HttpResponse>> HttpClient::post(const std::string& u
     return request(req);
 }
 
-std::future<std::shared_ptr<HttpResponse>> HttpClient::request(std::shared_ptr<HttpRequest> request)
+std::future<std::shared_ptr<HttpResponse>> HttpClient::request(const std::shared_ptr<HttpRequest>& request)
 {
     request->timeout = 10;
 
     auto future_resp = std::make_shared<std::promise<std::shared_ptr<HttpResponse>>>();
-    m_client->send(request, [future_resp](const std::shared_ptr<HttpResponse> resp) {
+    m_client->send(request, [future_resp](const std::shared_ptr<HttpResponse>& resp) {
         future_resp->set_value(resp);
     });
 
