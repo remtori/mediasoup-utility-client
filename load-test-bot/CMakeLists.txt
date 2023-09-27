@@ -8,14 +8,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
+	src/viewer.hpp
+	src/viewer.cpp
+	src/timer_event_loop.hpp
+	src/timer_event_loop.cpp
+	src/consumer.hpp
 	src/main.cpp
 )
 
 include(FetchContent)
 
 FetchContent_Declare(ftxui
-		GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
-		GIT_TAG v4.0.0
+	GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
+	GIT_TAG v4.1.1
 )
 
 FetchContent_GetProperties(ftxui)

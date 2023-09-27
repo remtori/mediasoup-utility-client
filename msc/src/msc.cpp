@@ -34,15 +34,14 @@ class DeviceImpl : public Device
     , public mediasoupclient::Producer::Listener
     , public mediasoupclient::Consumer::Listener {
 public:
-    DeviceImpl(std::shared_ptr<cm::Executor> executor, std::shared_ptr<DeviceDelegate> delegate)
-        : m_executor(std::move(executor))
-        , m_delegate(std::move(delegate))
+    DeviceImpl(std::shared_ptr<DeviceDelegate> delegate)
+        : m_delegate(std::move(delegate))
     {
     }
 
-    ~DeviceImpl()
+    ~DeviceImpl() override
     {
-        stop();
+        DeviceImpl::stop();
     }
 
     bool load(const nlohmann::json& rtp_capabilities) noexcept override
@@ -82,13 +81,7 @@ public:
         return m_device.CanProduce(kind == MediaKind::Audio ? kAudio : kAudio);
     }
 
-    void ensure_transport(TransportKind kind) noexcept override
-    {
-        m_executor->submit(
-                      [](DeviceImpl* self, TransportKind kind) { self->ensure_transport_impl(kind); },
-                      this, kind)
-            .wait();
-    }
+    void ensure_transport(TransportKind kind) noexcept override;
 
     void create_video_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer) noexcept override;
     void create_audio_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer) noexcept override;
@@ -98,8 +91,8 @@ public:
 
     std::shared_ptr<VideoSender> create_video_source() noexcept override;
     std::shared_ptr<AudioSender> create_audio_source() noexcept override;
+
 private:
-    void ensure_transport_impl(TransportKind kind);
     void close_sink(const void* consumer) noexcept;
 
 public:
@@ -129,11 +122,10 @@ public:
 
     void OnConnectionStateChange(mediasoupclient::Transport* transport, const std::string& state) override
     {
-        m_executor->push_task(&DeviceDelegate::on_connection_state_change, m_delegate, transport->GetId(), state);
+        m_delegate->on_connection_state_change(transport->GetId(), state);
     }
 
 private:
-    std::shared_ptr<cm::Executor> m_executor;
     std::shared_ptr<DeviceDelegate> m_delegate;
 
     mediasoupclient::Device m_device {};
@@ -143,7 +135,7 @@ private:
     std::vector<std::unique_ptr<SinkImpl>> m_sinks {};
 };
 
-void DeviceImpl::ensure_transport_impl(TransportKind kind)
+void DeviceImpl::ensure_transport(TransportKind kind) noexcept
 {
     if (kind == TransportKind::Send && m_send_transport)
         return;
@@ -184,86 +176,68 @@ void DeviceImpl::ensure_transport_impl(TransportKind kind)
 
 void DeviceImpl::create_video_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> user_consumer) noexcept
 {
-    m_executor->push_task([this](
-                              const std::string& consumer_id,
-                              const std::string& producer_id,
-                              const nlohmann::json& rtp_parameters,
-                              std::shared_ptr<VideoConsumer> user_consumer) {
-        ensure_transport_impl(TransportKind::Recv);
+    ensure_transport(TransportKind::Recv);
 
-        auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
-            m_recv_transport->Consume(
-                this,
-                consumer_id,
-                producer_id,
-                kVideo,
-                rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&rtp_parameters)));
+    auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
+        m_recv_transport->Consume(
+            this,
+            consumer_id,
+            producer_id,
+            kVideo,
+            rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&rtp_parameters)));
 
-        m_sinks.emplace_back(std::make_unique<VideoSinkImpl>(std::move(consumer), std::move(user_consumer)));
-    },
-        consumer_id, producer_id, rtp_parameters, user_consumer);
+    m_sinks.emplace_back(std::make_unique<VideoSinkImpl>(std::move(consumer), std::move(user_consumer)));
 }
 
 void DeviceImpl::create_audio_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> user_consumer) noexcept
 {
-    m_executor->push_task([this](
-                              const std::string& consumer_id,
-                              const std::string& producer_id,
-                              const nlohmann::json& rtp_parameters,
-                              std::shared_ptr<AudioConsumer> user_consumer) {
-        ensure_transport_impl(TransportKind::Recv);
+    ensure_transport(TransportKind::Recv);
 
-        auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
-            m_recv_transport->Consume(
-                this,
-                consumer_id,
-                producer_id,
-                kAudio,
-                rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&rtp_parameters)));
+    auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
+        m_recv_transport->Consume(
+            this,
+            consumer_id,
+            producer_id,
+            kAudio,
+            rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&rtp_parameters)));
 
-        m_sinks.emplace_back(std::make_unique<AudioSinkImpl>(std::move(consumer), std::move(user_consumer)));
-    },
-        consumer_id, producer_id, rtp_parameters, user_consumer);
+    m_sinks.emplace_back(std::make_unique<AudioSinkImpl>(std::move(consumer), std::move(user_consumer)));
 }
 
 void DeviceImpl::close_sink(const void* consumer) noexcept
 {
-    m_executor->push_task([this, consumer]() {
-        for (auto it = m_sinks.begin(); it != m_sinks.end(); it++) {
-            auto& sink = *it;
-            if (!sink->is_user_ptr_equal(consumer))
-                continue;
+    for (auto it = m_sinks.begin(); it != m_sinks.end(); it++) {
+        auto& sink = *it;
+        if (!sink->is_user_ptr_equal(consumer))
+            continue;
 
-            sink->on_close();
-            m_sinks.erase(it);
-            break;
-        }
-    });
+        sink->on_close();
+        m_sinks.erase(it);
+        break;
+    }
 }
 
 void DeviceImpl::OnTransportClose(mediasoupclient::Consumer* consumer)
 {
-    m_executor->push_task([this, consumer] {
-        for (auto it = m_sinks.begin(); it != m_sinks.end(); it++) {
-            auto& sink = *it;
-            if (!sink->is_consumer_equal(consumer))
-                continue;
+    for (auto it = m_sinks.begin(); it != m_sinks.end(); it++) {
+        auto& sink = *it;
+        if (!sink->is_consumer_equal(consumer))
+            continue;
 
-            sink->on_close();
-            m_sinks.erase(it);
-            break;
-        }
-    });
+        sink->on_close();
+        m_sinks.erase(it);
+        break;
+    }
 }
 
 std::shared_ptr<VideoSender> DeviceImpl::create_video_source() noexcept
 {
-    ensure_transport_impl(TransportKind::Send);
+    ensure_transport(TransportKind::Send);
 
     auto* source = new rtc::RefCountedObject<::msc::VideoSenderImpl>(2, false);
     auto track = peer_connection_factory()->CreateVideoTrack("video_track_X", source);
 
-    //m_send_transport->Produce(this, )
+    // m_send_transport->Produce(this, )
 
     return nullptr;
 }
@@ -296,10 +270,15 @@ void initialize()
     peer_connection_factory();
 }
 
-std::shared_ptr<Device> Device::create(std::shared_ptr<cm::Executor> executor, std::shared_ptr<DeviceDelegate> delegate) noexcept
+int64_t rtc_timestamp_ms()
+{
+    return rtc::TimeMillis();
+}
+
+std::shared_ptr<Device> Device::create(std::shared_ptr<DeviceDelegate> delegate) noexcept
 {
     initialize();
-    return std::make_shared<DeviceImpl>(std::move(executor), std::move(delegate));
+    return std::make_shared<DeviceImpl>(std::move(delegate));
 }
 
 }

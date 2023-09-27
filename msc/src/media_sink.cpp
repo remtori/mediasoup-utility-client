@@ -24,18 +24,18 @@ void AudioSinkImpl::OnData(
 
 void VideoSinkImpl::OnFrame(const webrtc::VideoFrame& frame)
 {
-    auto i420_buffer = frame.video_frame_buffer()->ToI420();
+    // auto i420_buffer = frame.video_frame_buffer()->ToI420();
 
     VideoFrame video_frame = VideoFrame {
         .timestamp_ms = frame.timestamp(),
         .width = frame.width(),
         .height = frame.height(),
-        .data_y = i420_buffer->DataY(),
-        .data_u = i420_buffer->DataU(),
-        .data_v = i420_buffer->DataV(),
-        .stride_y = i420_buffer->StrideY(),
-        .stride_u = i420_buffer->StrideU(),
-        .stride_v = i420_buffer->StrideV(),
+//        .data_y = i420_buffer->DataY(),
+//        .data_u = i420_buffer->DataU(),
+//        .data_v = i420_buffer->DataV(),
+//        .stride_y = i420_buffer->StrideY(),
+//        .stride_u = i420_buffer->StrideU(),
+//        .stride_v = i420_buffer->StrideV(),
     };
 
     m_user_consumer->on_video_frame(video_frame);

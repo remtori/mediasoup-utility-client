@@ -23,6 +23,7 @@
 namespace msc {
 
 EXPORT void initialize();
+EXPORT int64_t rtc_timestamp_ms();
 
 enum class EXPORT MediaKind {
     Audio,
@@ -160,7 +161,7 @@ public:
 
 class EXPORT Device {
 public:
-    static std::shared_ptr<Device> create(std::shared_ptr<cm::Executor> executor, std::shared_ptr<DeviceDelegate> delegate) noexcept;
+    static std::shared_ptr<Device> create(std::shared_ptr<DeviceDelegate> delegate) noexcept;
 
     virtual ~Device() { }
 

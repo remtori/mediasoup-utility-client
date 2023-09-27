@@ -16,9 +16,12 @@ namespace cm {
 
 class [[nodiscard]] Executor {
 public:
-    Executor()
-        : m_thread(&Executor::worker, this)
+    explicit Executor(size_t num_concurrency)
     {
+        m_threads.reserve(num_concurrency);
+        for (size_t i = 0; i < num_concurrency; i++) {
+            m_threads.emplace_back(&Executor::worker, this);
+        }
     }
 
     /**
@@ -33,12 +36,11 @@ public:
             m_workers_running = false;
         }
         m_task_available_cv.notify_all();
-        m_thread.join();
-    }
 
-    std::thread::id thread_id() const
-    {
-        return m_thread.get_id();
+        for (auto& thread : m_threads) {
+            if (thread.joinable())
+                thread.join();
+        }
     }
 
     /**
@@ -51,10 +53,6 @@ public:
     void push_task(F&& task, A&&... args)
     {
         auto task_fn = std::bind(std::forward<F>(task), std::forward<A>(args)...);
-        if (m_thread.get_id() == std::this_thread::get_id()) {
-            task_fn();
-            return;
-        }
 
         {
             const std::scoped_lock tasks_lock(m_tasks_mutex);
@@ -142,7 +140,7 @@ private:
     }
 
 private:
-    std::thread m_thread;
+    std::vector<std::thread> m_threads {};
     std::condition_variable m_task_available_cv {};
     std::condition_variable m_tasks_done_cv {};
     std::queue<std::function<void()>> m_tasks {};
@@ -152,33 +150,6 @@ private:
 
     bool m_waiting { false };
     bool m_workers_running { true };
-};
-
-class ExecutorGroup {
-public:
-    ExecutorGroup(int thread_count = 0)
-    {
-        if (thread_count <= 0) {
-            if (std::thread::hardware_concurrency() > 0)
-                thread_count = std::thread::hardware_concurrency();
-            else
-                thread_count = 1;
-        }
-
-        for (int i = 0; i < thread_count; i++)
-            m_executors.emplace_back(std::make_shared<Executor>());
-    }
-
-    std::shared_ptr<Executor> get_executor()
-    {
-        auto ret = m_executors[m_next_executor];
-        m_next_executor = (m_next_executor + 1) % m_executors.size();
-        return ret;
-    }
-
-private:
-    std::vector<std::shared_ptr<Executor>> m_executors {};
-    size_t m_next_executor { 0 };
 };
 
 }
