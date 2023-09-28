@@ -168,7 +168,7 @@ public:
 
 class EXPORT Device {
 public:
-    static std::shared_ptr<Device> create(std::shared_ptr<DeviceDelegate> delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple = nullptr) noexcept;
+    static std::shared_ptr<Device> create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple = nullptr) noexcept;
 
     virtual ~Device() { }
 

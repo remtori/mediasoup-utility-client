@@ -20,7 +20,7 @@ void Viewer::watch(std::string streamer_id)
 {
     m_streamer_id = std::move(streamer_id);
     if (!m_device)
-        m_device = msc::Device::create(this->shared_from_this(), m_peer_connection_factory);
+        m_device = msc::Device::create(this, m_peer_connection_factory);
     else
         stop();
 

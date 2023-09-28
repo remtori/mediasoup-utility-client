@@ -35,8 +35,8 @@ class DeviceImpl : public Device
     , public mediasoupclient::Producer::Listener
     , public mediasoupclient::Consumer::Listener {
 public:
-    DeviceImpl(std::shared_ptr<DeviceDelegate> delegate, rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory)
-        : m_delegate(std::move(delegate))
+    DeviceImpl(DeviceDelegate* delegate, rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory)
+        : m_delegate(delegate)
         , m_peer_connection_factory(std::move(peer_connection_factory))
     {
     }
@@ -128,7 +128,7 @@ public:
     }
 
 private:
-    std::shared_ptr<DeviceDelegate> m_delegate;
+    DeviceDelegate* m_delegate;
     rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> m_peer_connection_factory;
 
     mediasoupclient::Device m_device {};
@@ -276,14 +276,14 @@ int64_t rtc_timestamp_ms()
     return rtc::TimeMillis();
 }
 
-std::shared_ptr<Device> Device::create(std::shared_ptr<DeviceDelegate> delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple) noexcept
+std::shared_ptr<Device> Device::create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple) noexcept
 {
     initialize();
 
     if (!peer_connection_factory_tuple)
         peer_connection_factory_tuple = default_peer_connection_factory();
 
-    return std::make_shared<DeviceImpl>(std::move(delegate), static_cast<PeerConnectionFactoryTupleImpl*>(peer_connection_factory_tuple.get())->factory());
+    return std::make_shared<DeviceImpl>(delegate, static_cast<PeerConnectionFactoryTupleImpl*>(peer_connection_factory_tuple.get())->factory());
 }
 
 }
