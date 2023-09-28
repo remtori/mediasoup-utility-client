@@ -3,9 +3,9 @@
 
 #include <ftxui/component/captured_mouse.hpp>
 #include <ftxui/component/component.hpp>
-#include <ftxui/component/component_base.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/component/loop.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/dom/flexbox_config.hpp>
 
@@ -23,12 +23,17 @@ struct VideoStats {
 
 class ViewerManager {
 public:
-    explicit ViewerManager(size_t num_worker_thread, size_t num_network_thread)
+    explicit ViewerManager(size_t num_worker_thread, size_t num_network_thread, size_t num_peer_connection_factory)
         : m_executor(std::make_unique<cm::Executor>(num_worker_thread))
     {
         m_http_clients.reserve(num_network_thread);
         for (auto i = 0; i < num_network_thread; i++) {
             m_http_clients.push_back(std::make_shared<hv::AsyncHttpClient>());
+        }
+
+        m_peer_connection_factories.reserve(num_peer_connection_factory);
+        for (auto i = 0; i < num_peer_connection_factory; i++) {
+            m_peer_connection_factories.push_back(msc::create_peer_connection_factory());
         }
     }
 
@@ -49,7 +54,8 @@ public:
 
             for (auto i = 0; i < new_viewer_count; i++) {
                 std::shared_ptr<hv::AsyncHttpClient> http_client = m_http_clients[m_viewers.size() % m_http_clients.size()];
-                auto viewer = std::make_shared<Viewer>(http_client);
+                std::shared_ptr<msc::PeerConnectionFactoryTuple> pc = m_peer_connection_factories[m_viewers.size() % m_peer_connection_factories.size()];
+                auto viewer = std::make_shared<Viewer>(http_client, pc);
 
                 m_viewers.push_back(viewer);
                 m_executor->push_task([this, viewer]() {
@@ -57,6 +63,11 @@ public:
                 });
             }
         }
+    }
+
+    size_t viewer_count() const
+    {
+        return m_viewers.size();
     }
 
     std::unordered_map<ViewerState, int> state_stats()
@@ -86,6 +97,7 @@ public:
 private:
     std::unique_ptr<cm::Executor> m_executor;
     std::vector<std::shared_ptr<hv::AsyncHttpClient>> m_http_clients {};
+    std::vector<std::shared_ptr<msc::PeerConnectionFactoryTuple>> m_peer_connection_factories {};
 
     std::string m_streamer_id {};
     std::vector<std::shared_ptr<Viewer>> m_viewers {};
@@ -97,18 +109,19 @@ int main(int argc, const char** argv)
     msc::initialize();
 
     size_t num_network_thread = 4;
-    size_t num_worker_thread = std::thread::hardware_concurrency();
+    size_t num_worker_thread = 4;
+    size_t num_peer_connection_factory = 2;
 
-    std::shared_ptr<ViewerManager> manager = std::make_shared<ViewerManager>(num_worker_thread, num_network_thread);
+    std::shared_ptr<ViewerManager> manager = std::make_shared<ViewerManager>(num_worker_thread, num_network_thread, num_peer_connection_factory);
 
-    std::string streamer_id = "1174393215";
+    std::string streamer_id = "1268337150"; //"1174393215";
     auto input_streamer_id = ftxui::Input(&streamer_id, "");
 
-    size_t viewer_count = 40;
+    size_t viewer_count = 10;
     ftxui::SliderOption<size_t> slider_option;
     slider_option.value = &viewer_count;
     slider_option.min = 1;
-    slider_option.max = 1000;
+    slider_option.max = 400;
     slider_option.increment = 1;
     slider_option.direction = ftxui::GaugeDirection::Right;
     auto input_viewer_count = ftxui::Slider(slider_option);
@@ -125,9 +138,25 @@ int main(int argc, const char** argv)
     auto connection_state_gauge = [&](std::string label, int count) {
         return ftxui::hbox({
             ftxui::text(std::move(label)),
-            ftxui::gauge(float(count) / float(viewer_count)),
+            ftxui::gauge(float(count) / float(manager->viewer_count())),
             ftxui::text(fmt::format(" {}", count))
         });
+    };
+
+    auto resolution_table = [](const std::unordered_map<std::string, int>& map) {
+        std::vector<std::shared_ptr<ftxui::Node>> children;
+        children.reserve(map.size());
+
+        for (const auto& [resolution, count] : map) {
+            auto line = ftxui::hbox({
+                ftxui::text(resolution) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, 12),
+                ftxui::text(std::to_string(count))
+            });
+
+            children.push_back(std::move(line));
+        }
+
+        return ftxui::vbox(children);
     };
 
     auto renderer = ftxui::Renderer(
@@ -175,16 +204,29 @@ int main(int argc, const char** argv)
                     }) | ftxui::flex,
                     ftxui::separator(),
                     ftxui::vbox({
-                        ftxui::text(fmt::format("Average FPS: {:6.4f}", video_stats.avgFps)) | ftxui::bold,
+                        ftxui::text(fmt::format("Average FPS: {:8.4f}", video_stats.avgFps)) | ftxui::bold,
                         ftxui::separator(),
                         ftxui::text("Screen Resolutions") | ftxui::bold,
+                        resolution_table(video_stats.resolution),
                     }) | ftxui::flex,
                 }),
             }) | ftxui::border;
         });
 
     auto screen = ftxui::ScreenInteractive::Fullscreen();
+
+    std::atomic<bool> refresh_ui_continue = true;
+    std::thread refresh_ui([&] {
+        while (refresh_ui_continue) {
+            using namespace std::chrono_literals;
+
+            std::this_thread::sleep_for(500ms);
+            screen.Post(ftxui::Event::Custom);
+        }
+    });
     screen.Loop(renderer);
+    refresh_ui_continue = false;
+    refresh_ui.join();
 
     return 0;
 }

@@ -4,8 +4,9 @@
 
 static const std::string ENDPOINT = "https://portal-mediasoup-dev.service.zingplay.com";
 
-Viewer::Viewer(std::shared_ptr<hv::AsyncHttpClient> http_client)
+Viewer::Viewer(std::shared_ptr<hv::AsyncHttpClient> http_client, std::shared_ptr<msc::PeerConnectionFactoryTuple> peer_connection_factory)
     : m_client(std::move(http_client))
+    , m_peer_connection_factory(std::move(peer_connection_factory))
     , m_screen_consumer(std::make_shared<ReportVideoConsumer>())
 {
 }
@@ -19,7 +20,7 @@ void Viewer::watch(std::string streamer_id)
 {
     m_streamer_id = std::move(streamer_id);
     if (!m_device)
-        m_device = msc::Device::create(this->shared_from_this());
+        m_device = msc::Device::create(this->shared_from_this(), m_peer_connection_factory);
     else
         stop();
 
@@ -82,14 +83,12 @@ void Viewer::watch(std::string streamer_id)
                 m_device->create_audio_sink(
                     consumer.at("consumerId").get<std::string>(),
                     consumer.at("producerId").get<std::string>(),
-                    consumer.at("rtpParameters"),
-                    std::make_shared<msc::DummyAudioConsumer>());
+                    consumer.at("rtpParameters"));
             } else {
                 m_device->create_video_sink(
                     consumer.at("consumerId").get<std::string>(),
                     consumer.at("producerId").get<std::string>(),
-                    consumer.at("rtpParameters"),
-                    std::make_shared<msc::DummyVideoConsumer>());
+                    consumer.at("rtpParameters"));
             }
         }
 

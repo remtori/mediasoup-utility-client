@@ -26,7 +26,7 @@ enum class ViewerState {
 class Viewer : public msc::DeviceDelegate
     , public std::enable_shared_from_this<Viewer> {
 public:
-    explicit Viewer(std::shared_ptr<hv::AsyncHttpClient> http_client);
+    explicit Viewer(std::shared_ptr<hv::AsyncHttpClient> http_client, std::shared_ptr<msc::PeerConnectionFactoryTuple> peer_connection_factory);
     ~Viewer() override;
 
     VideoStat video_stat()
@@ -54,6 +54,7 @@ private:
 
 private:
     cm::HttpClient m_client;
+    std::shared_ptr<msc::PeerConnectionFactoryTuple> m_peer_connection_factory;
     std::shared_ptr<ReportVideoConsumer> m_screen_consumer;
 
     std::string m_streamer_id {};
