@@ -6,8 +6,13 @@ add_compile_options(
 	-Wno-deprecated-declarations
 )
 
+set(PLATFORM_TARGET "x86_64-unknown-linux")
+if (WIN32)
+    set(PLATFORM_TARGET "x86_64-windows")
+endif()
+
 set(LIBWEBRTC_INCLUDE_PATH "${PROJECT_SOURCE_DIR}/deps/webrtc/include" CACHE STRING "" FORCE)
-set(LIBWEBRTC_BINARY_PATH "${PROJECT_SOURCE_DIR}/deps/webrtc/prebuilt/x86_64-windows" CACHE STRING "" FORCE)
+set(LIBWEBRTC_BINARY_PATH "${PROJECT_SOURCE_DIR}/deps/webrtc/prebuilt/${PLATFORM_TARGET}" CACHE STRING "" FORCE)
 
 add_subdirectory(fmt)
 add_subdirectory(libmediasoupclient)
