@@ -14,6 +14,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     src/media_sink.hpp
     src/media_sink.cpp
 	src/msc.cpp
+	src/peer_connection_factory.hpp
     src/peer_connection_factory.cpp
 )
 

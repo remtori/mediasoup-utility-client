@@ -2,6 +2,7 @@
 
 #include "./media_sender.hpp"
 #include "./media_sink.hpp"
+#include "./peer_connection_factory.hpp"
 
 #include <MediaSoupClientErrors.hpp>
 #include <mediasoupclient.hpp>
@@ -34,8 +35,9 @@ class DeviceImpl : public Device
     , public mediasoupclient::Producer::Listener
     , public mediasoupclient::Consumer::Listener {
 public:
-    DeviceImpl(std::shared_ptr<DeviceDelegate> delegate)
+    DeviceImpl(std::shared_ptr<DeviceDelegate> delegate, rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory)
         : m_delegate(std::move(delegate))
+        , m_peer_connection_factory(std::move(peer_connection_factory))
     {
     }
 
@@ -127,6 +129,7 @@ public:
 
 private:
     std::shared_ptr<DeviceDelegate> m_delegate;
+    rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> m_peer_connection_factory;
 
     mediasoupclient::Device m_device {};
     std::unique_ptr<mediasoupclient::SendTransport> m_send_transport { nullptr };
@@ -146,7 +149,7 @@ void DeviceImpl::ensure_transport(TransportKind kind) noexcept
     auto transport_options = m_delegate->create_server_side_transport(kind, this->rtp_capabilities()).get();
 
     mediasoupclient::PeerConnection::Options options;
-    options.factory = peer_connection_factory();
+    options.factory = m_peer_connection_factory.get();
 
     switch (kind) {
     case TransportKind::Send:
@@ -235,7 +238,7 @@ std::shared_ptr<VideoSender> DeviceImpl::create_video_source() noexcept
     ensure_transport(TransportKind::Send);
 
     auto* source = new rtc::RefCountedObject<::msc::VideoSenderImpl>(2, false);
-    auto track = peer_connection_factory()->CreateVideoTrack("video_track_X", source);
+    auto track = m_peer_connection_factory->CreateVideoTrack("video_track_X", source);
 
     // m_send_transport->Produce(this, )
 
@@ -266,8 +269,6 @@ void initialize()
 
     mediasoupclient::Logger::SetLogLevel(mediasoupclient::Logger::LogLevel::LOG_WARN);
     mediasoupclient::Logger::SetHandler(new FFIMediasoupLogHandler());
-
-    peer_connection_factory();
 }
 
 int64_t rtc_timestamp_ms()
@@ -275,10 +276,14 @@ int64_t rtc_timestamp_ms()
     return rtc::TimeMillis();
 }
 
-std::shared_ptr<Device> Device::create(std::shared_ptr<DeviceDelegate> delegate) noexcept
+std::shared_ptr<Device> Device::create(std::shared_ptr<DeviceDelegate> delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple) noexcept
 {
     initialize();
-    return std::make_shared<DeviceImpl>(std::move(delegate));
+
+    if (!peer_connection_factory_tuple)
+        peer_connection_factory_tuple = default_peer_connection_factory();
+
+    return std::make_shared<DeviceImpl>(std::move(delegate), static_cast<PeerConnectionFactoryTupleImpl*>(peer_connection_factory_tuple.get())->factory());
 }
 
 }

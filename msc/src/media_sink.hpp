@@ -7,7 +7,7 @@ namespace msc {
 
 class SinkImpl {
 public:
-    virtual ~SinkImpl() { }
+    virtual ~SinkImpl() = default;
 
     virtual bool is_consumer_equal(const mediasoupclient::Consumer*) = 0;
     virtual bool is_user_ptr_equal(const void*) = 0;
@@ -21,12 +21,14 @@ public:
         : m_consumer(std::move(consumer))
         , m_user_consumer(std::move(user_consumer))
     {
-        dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->AddSink(this);
+        if (m_user_consumer)
+            dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->AddSink(this);
     }
 
-    ~AudioSinkImpl()
+    ~AudioSinkImpl() override
     {
-        dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
+        if (m_user_consumer)
+            dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
     }
 
     void OnData(
@@ -49,7 +51,8 @@ public:
 
     void on_close() override
     {
-        m_user_consumer->on_close();
+        if (m_user_consumer)
+            m_user_consumer->on_close();
     }
 
 private:
@@ -64,12 +67,14 @@ public:
         : m_consumer(std::move(consumer))
         , m_user_consumer(std::move(user_consumer))
     {
-        dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->AddOrUpdateSink(this, {});
+        if (m_user_consumer)
+            dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->AddOrUpdateSink(this, {});
     }
 
-    ~VideoSinkImpl()
+    ~VideoSinkImpl() override
     {
-        dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
+        if (m_user_consumer)
+            dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
     }
 
     void OnFrame(const webrtc::VideoFrame& frame) override;
@@ -86,7 +91,8 @@ public:
 
     void on_close() override
     {
-        m_user_consumer->on_close();
+        if (m_user_consumer)
+            m_user_consumer->on_close();
     }
 
 private:

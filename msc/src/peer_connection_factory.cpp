@@ -1,14 +1,14 @@
+#include "peer_connection_factory.hpp"
+
 #include <pc/test/fake_audio_capture_module.h>
 
 #include <api/audio_codecs/builtin_audio_decoder_factory.h>
 #include <api/audio_codecs/builtin_audio_encoder_factory.h>
-#include <api/create_peerconnection_factory.h>
 #include <api/make_ref_counted.h>
 #include <api/units/time_delta.h>
 #include <api/video_codecs/builtin_video_decoder_factory.h>
 #include <api/video_codecs/builtin_video_encoder_factory.h>
 #include <rtc_base/checks.h>
-#include <rtc_base/thread.h>
 #include <rtc_base/time_utils.h>
 
 using ::webrtc::TimeDelta;
@@ -580,44 +580,48 @@ void FakeAudioCaptureModule::SendFrameP()
 
 namespace msc {
 
-webrtc::PeerConnectionFactoryInterface* peer_connection_factory()
+PeerConnectionFactoryTupleImpl::PeerConnectionFactoryTupleImpl()
 {
-    static std::unique_ptr<rtc::Thread> s_network_thread;
-    static std::unique_ptr<rtc::Thread> s_signaling_thread;
-    static std::unique_ptr<rtc::Thread> s_worker_thread;
-    static rtc::scoped_refptr<webrtc::AudioDeviceModule> s_adm;
-    static rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> s_peer_connection_factory { nullptr };
+    m_network_thread = rtc::Thread::CreateWithSocketServer();
+    m_signaling_thread = rtc::Thread::Create();
+    m_worker_thread = rtc::Thread::Create();
 
-    if (s_peer_connection_factory) {
-        return s_peer_connection_factory.get();
+    m_network_thread->SetName("network_thread", nullptr);
+    m_signaling_thread->SetName("signaling_thread", nullptr);
+    m_worker_thread->SetName("worker_thread", nullptr);
+
+    if (!m_network_thread->Start() || !m_signaling_thread->Start() || !m_worker_thread->Start()) {
+        throw std::runtime_error("failed to start webrtc thread(s)");
     }
 
-    s_network_thread = rtc::Thread::CreateWithSocketServer();
-    s_signaling_thread = rtc::Thread::Create();
-    s_worker_thread = rtc::Thread::Create();
-
-    s_network_thread->SetName("network_thread", nullptr);
-    s_signaling_thread->SetName("signaling_thread", nullptr);
-    s_worker_thread->SetName("worker_thread", nullptr);
-
-    if (!s_network_thread->Start() || !s_signaling_thread->Start() || !s_worker_thread->Start()) {
-        return nullptr;
-    }
-
-    s_adm = ::FakeAudioCaptureModule::Create();
-    s_peer_connection_factory = webrtc::CreatePeerConnectionFactory(
-        s_network_thread.get(),
-        s_worker_thread.get(),
-        s_signaling_thread.get(),
-        s_adm,
+    m_adm = ::FakeAudioCaptureModule::Create();
+    m_peer_connection_factory = webrtc::CreatePeerConnectionFactory(
+        m_network_thread.get(),
+        m_worker_thread.get(),
+        m_signaling_thread.get(),
+        m_adm,
         webrtc::CreateBuiltinAudioEncoderFactory(),
         webrtc::CreateBuiltinAudioDecoderFactory(),
         webrtc::CreateBuiltinVideoEncoderFactory(),
         webrtc::CreateBuiltinVideoDecoderFactory(),
         nullptr,
         nullptr);
+}
 
-    return s_peer_connection_factory.get();
+PeerConnectionFactoryTupleImpl::~PeerConnectionFactoryTupleImpl()
+{
+}
+
+std::shared_ptr<PeerConnectionFactoryTuple> default_peer_connection_factory()
+{
+    static std::shared_ptr<PeerConnectionFactoryTuple> s_default = create_peer_connection_factory();
+
+    return s_default;
+}
+
+std::shared_ptr<PeerConnectionFactoryTuple> create_peer_connection_factory()
+{
+    return std::make_shared<PeerConnectionFactoryTupleImpl>();
 }
 
 }
