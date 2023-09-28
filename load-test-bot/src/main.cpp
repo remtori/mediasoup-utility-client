@@ -120,8 +120,8 @@ int main(int argc, const char** argv)
     size_t viewer_count = 10;
     ftxui::SliderOption<size_t> slider_option;
     slider_option.value = &viewer_count;
-    slider_option.min = 1;
-    slider_option.max = 400;
+    slider_option.min = size_t(0);
+    slider_option.max = 200;
     slider_option.increment = 1;
     slider_option.direction = ftxui::GaugeDirection::Right;
     auto input_viewer_count = ftxui::Slider(slider_option);
