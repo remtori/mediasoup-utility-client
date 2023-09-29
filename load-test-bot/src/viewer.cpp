@@ -1,5 +1,7 @@
 #include "viewer.hpp"
 
+#include <common/logger.hpp>
+
 #include "timer_event_loop.hpp"
 
 static const std::string ENDPOINT = "https://portal-mediasoup-dev.service.zingplay.com";
@@ -32,7 +34,7 @@ void Viewer::watch(std::string streamer_id)
             auto tokenResp = m_client.get(ENDPOINT + "/stats/sign").get();
             auto tokenJson = tokenResp->GetJson();
             if (!tokenJson.value("ok", false)) {
-                // fmt::println("Error cannot get token: {}", tokenJson.dump(2));
+                cm::log("Error cannot get token: {}", tokenJson.dump(2));
                 m_state = ViewerState::GettingAuthTokenFailed;
                 return;
             }
@@ -44,7 +46,7 @@ void Viewer::watch(std::string streamer_id)
         auto watch_response = resp->GetJson();
 
         if (!watch_response.value("ok", true)) {
-            // fmt::println("watch error: {}", watch_response.dump(2));
+            cm::log("Watch error: {}", watch_response.dump(2));
             m_state = ViewerState::StreamNotFound;
             return;
         }
@@ -59,7 +61,7 @@ void Viewer::watch(std::string streamer_id)
 
         auto consume_response = resp->GetJson();
         if (!consume_response.value("ok", true)) {
-            // fmt::println("consume error got: {}", consume_response.dump(2));
+            cm::log("Consume error got: {}", consume_response.dump(2));
             m_state = ViewerState::ConsumeStreamFailed;
             return;
         }
@@ -97,7 +99,7 @@ void Viewer::watch(std::string streamer_id)
             m_client.getAsync(ENDPOINT + "/live/ping", nullptr);
         });
     } catch (const std::exception& ex) {
-        // fmt::println("[{}] Exception: %s", m_streamer_id, ex.what());
+        cm::log("Exception: {}", ex.what());
         m_state = ViewerState::Exception;
     }
 }

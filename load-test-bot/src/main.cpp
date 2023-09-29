@@ -7,9 +7,9 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/component/loop.hpp>
 #include <ftxui/dom/elements.hpp>
-#include <ftxui/dom/flexbox_config.hpp>
 
 #include <common/http_client.hpp>
+#include <common/logger.hpp>
 #include <fmt/format.h>
 #include <msc/msc.hpp>
 #include <utility>
@@ -105,8 +105,11 @@ private:
 
 int main(int argc, const char** argv)
 {
-    fmt::println("initializing...");
+    cm::init_logger("load_test.log");
+
+    cm::log("Initializing...");
     msc::initialize();
+    cm::log("Initialized");
 
     size_t num_network_thread = 4;
     size_t num_worker_thread = 4;
@@ -114,7 +117,7 @@ int main(int argc, const char** argv)
 
     std::shared_ptr<ViewerManager> manager = std::make_shared<ViewerManager>(num_worker_thread, num_network_thread, num_peer_connection_factory);
 
-    std::string streamer_id = "1268337150"; //"1174393215";
+    std::string streamer_id = true ? "1174393215" : "1268337150";
     auto input_streamer_id = ftxui::Input(&streamer_id, "");
 
     size_t viewer_count = 10;
