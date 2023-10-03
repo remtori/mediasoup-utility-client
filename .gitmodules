@@ -8,3 +8,6 @@
 [submodule "deps/libhv/src"]
 	path = deps/libhv/src
 	url = https://github.com/ithewei/libhv
+[submodule "deps/argparse"]
+	path = deps/argparse
+	url = https://github.com/p-ranav/argparse

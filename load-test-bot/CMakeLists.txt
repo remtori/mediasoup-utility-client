@@ -8,12 +8,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
-	src/viewer.hpp
-	src/viewer.cpp
-	src/timer_event_loop.hpp
-	src/timer_event_loop.cpp
 	src/consumer.hpp
 	src/main.cpp
+	src/timer_event_loop.hpp
+	src/timer_event_loop.cpp
+	src/ui.hpp
+	src/ui.cpp
+	src/viewer_manager.hpp
+	src/viewer_manager.cpp
+	src/viewer.hpp
+	src/viewer.cpp
 )
 
 include(FetchContent)
@@ -35,13 +39,15 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     msc
 	common
+	argparse
 	ftxui::screen
 	ftxui::dom
 	ftxui::component
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-
+	$<$<PLATFORM_ID:Windows>:NOMINMAX>
+	$<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
