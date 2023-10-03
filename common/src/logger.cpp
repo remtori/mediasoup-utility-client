@@ -28,6 +28,11 @@ void init_logger(const char* filename)
     if (s_output_stream != nullptr)
         return;
 
+    if (filename == nullptr) {
+        s_output_stream = &std::cout;
+        return;
+    }
+
     std::string bin_path_string;
 #ifdef _WIN32
     bin_path_string.resize(255, 0);

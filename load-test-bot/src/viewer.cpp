@@ -4,7 +4,8 @@
 
 #include "timer_event_loop.hpp"
 
-static const std::string ENDPOINT = "https://portal-mediasoup-dev.service.zingplay.com";
+static constexpr bool USE_LIVE_SERVER = false;
+static const std::string ENDPOINT = USE_LIVE_SERVER ? "https://portal-voicevideo.service.zingplay.com" : "https://portal-mediasoup-dev.service.zingplay.com";
 
 Viewer::Viewer(std::shared_ptr<hv::AsyncHttpClient> http_client, std::shared_ptr<msc::PeerConnectionFactoryTuple> peer_connection_factory)
     : m_client(std::move(http_client))
