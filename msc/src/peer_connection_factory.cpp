@@ -1,5 +1,6 @@
 #include "peer_connection_factory.hpp"
 
+#include <iostream>
 #include <pc/test/fake_audio_capture_module.h>
 
 #include <api/audio_codecs/builtin_audio_decoder_factory.h>
@@ -52,9 +53,8 @@ FakeAudioCaptureModule::~FakeAudioCaptureModule()
 rtc::scoped_refptr<FakeAudioCaptureModule> FakeAudioCaptureModule::Create()
 {
     auto capture_module = rtc::make_ref_counted<FakeAudioCaptureModule>();
-    if (!capture_module->Initialize()) {
-        return nullptr;
-    }
+    RTC_CHECK(capture_module->Initialize());
+
     return capture_module;
 }
 
@@ -595,6 +595,8 @@ PeerConnectionFactoryTupleImpl::PeerConnectionFactoryTupleImpl()
     }
 
     m_adm = ::FakeAudioCaptureModule::Create();
+    std::cout << "Creating peer connection factory with adm=" << (m_adm.get()) << std::endl;
+
     m_peer_connection_factory = webrtc::CreatePeerConnectionFactory(
         m_network_thread.get(),
         m_worker_thread.get(),
