@@ -35,7 +35,6 @@ PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     mediasoupclient
 	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
-	$<$<NOT:$<PLATFORM_ID:Windows>>:X11>
 	$<$<PLATFORM_ID:Windows>:secur32.lib>
 	$<$<PLATFORM_ID:Windows>:dmoguids>
 	$<$<PLATFORM_ID:Windows>:wmcodecdspuuid>
