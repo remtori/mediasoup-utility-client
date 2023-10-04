@@ -51,7 +51,11 @@ public:
         if (m_device.IsLoaded())
             return false;
 
-        m_device.Load(rtp_capabilities);
+        mediasoupclient::PeerConnection::Options options;
+        options.factory = m_peer_connection_factory.get();
+
+        m_device.Load(rtp_capabilities, &options);
+
         return true;
     }
 
@@ -265,7 +269,6 @@ void initialize()
     rtc::InitializeSSL();
     rtc::InitRandom(static_cast<int>(rtc::TimeMillis()));
     // rtc::LogMessage::LogToDebug(rtc::LS_INFO);
-    // rtc::LogMessage::AddLogToStream(new impl::FFIWebrtcLogSink(), rtc::LS_INFO);
 
     mediasoupclient::Logger::SetLogLevel(mediasoupclient::Logger::LogLevel::LOG_WARN);
     mediasoupclient::Logger::SetHandler(new FFIMediasoupLogHandler());

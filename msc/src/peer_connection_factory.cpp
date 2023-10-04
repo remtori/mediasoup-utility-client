@@ -595,8 +595,6 @@ PeerConnectionFactoryTupleImpl::PeerConnectionFactoryTupleImpl()
     }
 
     m_adm = ::FakeAudioCaptureModule::Create();
-    std::cout << "Creating peer connection factory with adm=" << (m_adm.get()) << std::endl;
-
     m_peer_connection_factory = webrtc::CreatePeerConnectionFactory(
         m_network_thread.get(),
         m_worker_thread.get(),
