@@ -27,7 +27,7 @@ int main(int argc, const char** argv)
     program.add_argument("-p", "--peer-factory")
         .help("Number of peer connection factory, each with its own network, worker and signaling thread.")
         .scan<'u', size_t>()
-        .default_value(size_t(2));
+        .default_value(size_t(1));
 
     program.add_argument("-i", "--streamer-id")
         .default_value(std::string(true ? "1174393215" : "1268337150"));
