@@ -100,4 +100,49 @@ private:
     std::shared_ptr<VideoConsumer> m_user_consumer;
 };
 
+class DataConsumerImpl : public mediasoupclient::DataConsumer::Listener {
+public:
+    DataConsumerImpl(std::shared_ptr<DataConsumer> user_consumer)
+        : m_user_consumer(std::move(user_consumer))
+    {
+    }
+
+    virtual ~DataConsumerImpl()
+    {
+    }
+
+    bool is_consumer_equal(const mediasoupclient::DataConsumer* consumer)
+    {
+        return consumer == m_consumer.get();
+    }
+
+    bool is_user_ptr_equal(const void* ptr)
+    {
+        return ptr == m_user_consumer.get();
+    }
+
+    void set_consumer(std::unique_ptr<mediasoupclient::DataConsumer> consumer)
+    {
+        m_consumer = std::move(consumer);
+    }
+
+private:
+    void OnConnecting(mediasoupclient::DataConsumer*) override { }
+    void OnOpen(mediasoupclient::DataConsumer*) override { }
+    void OnClosing(mediasoupclient::DataConsumer*) override { }
+    void OnClose(mediasoupclient::DataConsumer*) override { }
+    void OnTransportClose(mediasoupclient::DataConsumer*) override { }
+
+    void OnMessage(mediasoupclient::DataConsumer*, const webrtc::DataBuffer& buffer) override
+    {
+        if (m_user_consumer) {
+            m_user_consumer->on_data({ buffer.data.data(), buffer.size() });
+        }
+    }
+
+private:
+    std::unique_ptr<mediasoupclient::DataConsumer> m_consumer { nullptr };
+    std::shared_ptr<DataConsumer> m_user_consumer;
+};
+
 }

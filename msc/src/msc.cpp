@@ -33,7 +33,8 @@ class DeviceImpl : public Device
     , public mediasoupclient::SendTransport::Listener
     , public mediasoupclient::RecvTransport::Listener
     , public mediasoupclient::Producer::Listener
-    , public mediasoupclient::Consumer::Listener {
+    , public mediasoupclient::Consumer::Listener 
+    , public mediasoupclient::DataProducer::Listener {
 public:
     DeviceImpl(DeviceDelegate* delegate, rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory)
         : m_delegate(delegate)
@@ -91,12 +92,15 @@ public:
 
     void create_video_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer) noexcept override;
     void create_audio_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer) noexcept override;
+    void create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer>) noexcept override;
 
     void close_video_sink(const std::shared_ptr<VideoConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
     void close_audio_sink(const std::shared_ptr<AudioConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
+    void close_data_sink(const std::shared_ptr<DataConsumer>&) noexcept override;
 
     std::shared_ptr<VideoSender> create_video_source() noexcept override;
     std::shared_ptr<AudioSender> create_audio_source() noexcept override;
+    std::shared_ptr<DataSender> create_data_source(const std::string& label, const std::string& protocol, bool ordered, int maxRetransmits, int maxPacketLifeTime) noexcept override;
 
 private:
     void close_sink(const void* consumer) noexcept;
@@ -138,6 +142,11 @@ public:
             state
         );
     }
+    
+    void OnOpen(mediasoupclient::DataProducer*) override { }
+    void OnClose(mediasoupclient::DataProducer*) override { }
+    void OnBufferedAmountChange(mediasoupclient::DataProducer*, uint64_t sentDataSize) override { }
+    void OnTransportClose(mediasoupclient::DataProducer*) override { }
 
 private:
     DeviceDelegate* m_delegate;
@@ -148,6 +157,7 @@ private:
     std::unique_ptr<mediasoupclient::RecvTransport> m_recv_transport { nullptr };
 
     std::vector<std::unique_ptr<SinkImpl>> m_sinks {};
+    std::vector<std::unique_ptr<DataConsumerImpl>> m_dataSinks {};
 };
 
 void DeviceImpl::ensure_transport(TransportKind kind) noexcept
@@ -260,6 +270,60 @@ std::shared_ptr<VideoSender> DeviceImpl::create_video_source() noexcept
 std::shared_ptr<AudioSender> DeviceImpl::create_audio_source() noexcept
 {
     return nullptr;
+}
+
+void DeviceImpl::create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer> user_consumer) noexcept
+{
+    ensure_transport(TransportKind::Recv);
+
+    auto wrapper_consumer = std::make_unique<DataConsumerImpl>(user_consumer);
+    auto data_consumer = std::unique_ptr<mediasoupclient::DataConsumer>(
+        m_recv_transport->ConsumeData(
+            wrapper_consumer.get(), 
+            consumer_id, 
+            producer_id, 
+            stream_id, 
+            label, 
+            protocol
+        )
+    );
+
+    wrapper_consumer->set_consumer(std::move(data_consumer));
+}
+
+void DeviceImpl::close_data_sink(const std::shared_ptr<DataConsumer>& user_consumer) noexcept
+{
+    for (auto it = m_dataSinks.begin(); it != m_dataSinks.end(); ++it)
+    {
+        auto& sink = *it;
+        if (sink->is_user_ptr_equal(user_consumer.get())) {
+            m_dataSinks.erase(it);
+            break;
+        }
+    }
+}
+
+std::shared_ptr<DataSender> DeviceImpl::create_data_source(
+    const std::string& label,
+    const std::string& protocol,
+    bool ordered,
+    int maxRetransmits,
+    int maxPacketLifeTime) noexcept
+{
+    ensure_transport(TransportKind::Send);
+    auto data_producer = std::unique_ptr<mediasoupclient::DataProducer>(
+        m_send_transport->ProduceData(
+            this, 
+            label, 
+            protocol, 
+            ordered, 
+            maxRetransmits, 
+            maxPacketLifeTime, 
+            nlohmann::json::object()
+        )
+    );
+
+    return std::make_shared<DataSenderImpl>(std::move(data_producer));
 }
 
 }

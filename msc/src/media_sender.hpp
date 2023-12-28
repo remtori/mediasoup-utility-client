@@ -111,4 +111,42 @@ private:
     std::vector<webrtc::AudioTrackSinkInterface*> m_sinks {};
 };
 
+class DataSenderImpl : public DataSender {
+public:
+    DataSenderImpl(std::unique_ptr<mediasoupclient::DataProducer> producer)
+        : m_producer(std::move(producer))
+    {
+    }
+
+    ~DataSenderImpl()
+    {
+        m_producer->Close();
+    }
+   
+private:
+    bool is_closed() override
+    {
+        return m_producer->GetReadyState() != webrtc::DataChannelInterface::kOpen;
+    }
+
+    void send_data(std::span<const uint8_t> data) override
+    {
+        std::lock_guard lk(m_mutex);
+        if (is_closed()) {
+            return;
+        }
+
+        m_buffer.EnsureCapacity(data.size_bytes());
+        std::memcpy(m_buffer.MutableData(), data.data(), data.size_bytes());
+
+        webrtc::DataBuffer data_buffer(m_buffer, true);
+        m_producer->Send(data_buffer);
+    }
+
+private:
+    std::mutex m_mutex {};
+    rtc::CopyOnWriteBuffer m_buffer {};
+    std::unique_ptr<mediasoupclient::DataProducer> m_producer;
+};
+
 }

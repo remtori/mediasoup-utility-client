@@ -6,6 +6,7 @@
 #include <future>
 #include <memory>
 #include <optional>
+#include <span>
 
 #include <common/executor.hpp>
 #include <common/json.hpp>
@@ -121,6 +122,13 @@ public:
     virtual void on_close() = 0;
 };
 
+class EXPORT DataConsumer {
+public:
+    virtual ~DataConsumer() = default;
+
+    virtual void on_data(std::span<const uint8_t>) = 0;
+};
+
 class DummyVideoConsumer : public VideoConsumer {
 public:
     DummyVideoConsumer() = default;
@@ -166,6 +174,15 @@ public:
     virtual void send_audio_data(const MutableAudioData&) = 0;
 };
 
+class EXPORT DataSender {
+public:
+    virtual ~DataSender() = default;
+
+    virtual bool is_closed() = 0;
+
+    virtual void send_data(std::span<const uint8_t>) = 0;
+};
+
 class EXPORT Device {
 protected:
     Device() {};
@@ -184,21 +201,35 @@ public:
     virtual void ensure_transport(TransportKind kind) noexcept = 0;
 
     virtual void create_video_sink(
-        const std::string& consumer_id, 
-        const std::string& producer_id, 
-        const nlohmann::json& rtp_parameters, 
+        const std::string& consumer_id,
+        const std::string& producer_id,
+        const nlohmann::json& rtp_parameters,
         std::shared_ptr<VideoConsumer> consumer = nullptr) noexcept = 0;
     virtual void create_audio_sink(
-        const std::string& consumer_id, 
-        const std::string& producer_id, 
-        const nlohmann::json& rtp_parameters, 
+        const std::string& consumer_id,
+        const std::string& producer_id,
+        const nlohmann::json& rtp_parameters,
         std::shared_ptr<AudioConsumer> consumer = nullptr) noexcept = 0;
+    virtual void create_data_sink(
+        const std::string& consumer_id,
+        const std::string& producer_id,
+        uint16_t stream_id,
+        const std::string& label,
+        const std::string& protocol,
+        std::shared_ptr<DataConsumer> = nullptr) noexcept = 0;
 
     virtual void close_video_sink(const std::shared_ptr<VideoConsumer>&) noexcept = 0;
     virtual void close_audio_sink(const std::shared_ptr<AudioConsumer>&) noexcept = 0;
+    virtual void close_data_sink(const std::shared_ptr<DataConsumer>&) noexcept = 0;
 
     virtual std::shared_ptr<VideoSender> create_video_source() noexcept = 0;
     virtual std::shared_ptr<AudioSender> create_audio_source() noexcept = 0;
+    virtual std::shared_ptr<DataSender> create_data_source(
+        const std::string& label,
+        const std::string& protocol,
+        bool ordered,
+        int maxRetransmits,
+        int maxPacketLifeTime) noexcept = 0;
 };
 
 }
