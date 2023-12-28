@@ -12,22 +12,43 @@
 
 namespace cm {
 
+struct ProtooResponse {
+    bool ok;
+    int64_t id;
+
+    nlohmann::json data;
+
+    int64_t error_code;
+    nlohmann::json error_reason;
+};
+
 struct ProtooRequest {
     int64_t id;
 
     std::string method;
     nlohmann::json data;
-};
 
-struct ProtooResponse {
-    bool ok;
-    int64_t id;
+    ProtooResponse ok(nlohmann::json data)
+    {
+        return ProtooResponse {
+            .ok = true,
+            .id = id,
+            .data = std::move(data),
+            .error_code = 0,
+            .error_reason = nullptr,
+        };
+    }
 
-    std::string method;
-    nlohmann::json data;
-
-    int64_t error_code;
-    nlohmann::json error_reason;
+    ProtooResponse err(int64_t error_code, nlohmann::json error_reason)
+    {
+        return ProtooResponse {
+            .ok = false,
+            .id = id,
+            .data = nullptr,
+            .error_code = error_code,
+            .error_reason = std::move(error_reason),
+        };
+    }
 };
 
 struct ProtooNotify {

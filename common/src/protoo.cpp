@@ -55,7 +55,6 @@ void ProtooClient::on_ws_message(const std::string& raw_msg)
         msg.at("id").get_to(response.id);
 
         if (response.ok) {
-            msg.at("method").get_to(response.method);
             msg.at("data").get_to(response.data);
         } else {
             msg.at("errorCode").get_to(response.error_code);
@@ -147,7 +146,7 @@ void ProtooClient::response(ProtooResponse response)
             { "response", true },
             { "ok", true },
             { "id", response.id },
-            { "method", std::move(response.method) },
+            { "method", "ws-response" },
             { "data", std::move(response.data) },
         };
     } else {
@@ -155,7 +154,7 @@ void ProtooClient::response(ProtooResponse response)
             { "response", true },
             { "ok", false },
             { "id", response.id },
-            { "method", std::move(response.method) },
+            { "method", "ws-response" },
             { "errorCode", response.error_code },
             { "errorReason", std::move(response.error_reason) },
         };
