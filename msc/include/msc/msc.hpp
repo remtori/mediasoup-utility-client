@@ -55,12 +55,12 @@ public:
     virtual ~DeviceDelegate() { }
 
     virtual std::future<CreateTransportOptions> create_server_side_transport(TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept = 0;
-    virtual std::future<void> connect_transport(const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept = 0;
+    virtual std::future<void> connect_transport(TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept = 0;
 
     virtual std::future<std::string> connect_producer(const std::string& transport_id, MediaKind kind, const nlohmann::json& rtp_parameters) noexcept = 0;
     virtual std::future<std::string> connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept = 0;
 
-    virtual void on_connection_state_change(const std::string& transport_id, const std::string& connection_state) noexcept = 0;
+    virtual void on_connection_state_change(TransportKind kind, const std::string& transport_id, const std::string& connection_state) noexcept = 0;
 };
 
 struct EXPORT VideoFrame {
@@ -167,10 +167,13 @@ public:
 };
 
 class EXPORT Device {
+protected:
+    Device() {};
+
 public:
     static std::shared_ptr<Device> create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple = nullptr) noexcept;
 
-    virtual ~Device() { }
+    virtual ~Device() {};
 
     virtual bool load(const nlohmann::json& rtp_capabilities) noexcept = 0;
     virtual const nlohmann::json& rtp_capabilities() const noexcept = 0;
@@ -180,8 +183,16 @@ public:
 
     virtual void ensure_transport(TransportKind kind) noexcept = 0;
 
-    virtual void create_video_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer = nullptr) noexcept = 0;
-    virtual void create_audio_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer = nullptr) noexcept = 0;
+    virtual void create_video_sink(
+        const std::string& consumer_id, 
+        const std::string& producer_id, 
+        const nlohmann::json& rtp_parameters, 
+        std::shared_ptr<VideoConsumer> consumer = nullptr) noexcept = 0;
+    virtual void create_audio_sink(
+        const std::string& consumer_id, 
+        const std::string& producer_id, 
+        const nlohmann::json& rtp_parameters, 
+        std::shared_ptr<AudioConsumer> consumer = nullptr) noexcept = 0;
 
     virtual void close_video_sink(const std::shared_ptr<VideoConsumer>&) noexcept = 0;
     virtual void close_audio_sink(const std::shared_ptr<AudioConsumer>&) noexcept = 0;

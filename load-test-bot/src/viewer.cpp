@@ -132,7 +132,7 @@ std::future<msc::CreateTransportOptions> Viewer::create_server_side_transport(ms
     return promise.get_future();
 }
 
-std::future<void> Viewer::connect_transport(const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept
+std::future<void> Viewer::connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept
 {
     nlohmann::json body = {
         { "dtlsParameters", dtls_parameters }
@@ -168,7 +168,7 @@ std::future<std::string> Viewer::connect_data_producer(const std::string& transp
     return promise.get_future();
 }
 
-void Viewer::on_connection_state_change(const std::string&, const std::string& connection_state) noexcept
+void Viewer::on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept
 {
     if (connection_state == "new")
         m_state = ViewerState::New;

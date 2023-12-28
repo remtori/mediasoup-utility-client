@@ -104,7 +104,11 @@ private:
 public:
     std::future<void> OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtls_parameters) override
     {
-        return m_delegate->connect_transport(transport->GetId(), dtls_parameters);
+        return m_delegate->connect_transport(
+            transport == m_send_transport.get() ? TransportKind::Send : TransportKind::Recv,
+            transport->GetId(), 
+            dtls_parameters
+        );
     }
 
     std::future<std::string> OnProduce(mediasoupclient::SendTransport* transport, const std::string& kind, nlohmann::json rtp_parameters, const nlohmann::json& app_data) override
@@ -128,7 +132,11 @@ public:
 
     void OnConnectionStateChange(mediasoupclient::Transport* transport, const std::string& state) override
     {
-        m_delegate->on_connection_state_change(transport->GetId(), state);
+        m_delegate->on_connection_state_change(
+            transport == m_send_transport.get() ? TransportKind::Send : TransportKind::Recv, 
+            transport->GetId(), 
+            state
+        );
     }
 
 private:
