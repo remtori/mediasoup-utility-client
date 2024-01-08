@@ -88,27 +88,47 @@ private:
     rtc::scoped_refptr<webrtc::I420Buffer> m_buffer { nullptr };
 };
 
-class AudioSenderImpl : public AudioSender,
-                        public webrtc::LocalAudioSource
-{
+class AudioSenderImpl : public AudioSender {
 public:
-    void AddSink(webrtc::AudioTrackSinkInterface* newSink) override
+    AudioSenderImpl()
     {
-        std::lock_guard lk(m_mutex);
-        for (auto* sink : m_sinks)
-            if (sink == newSink) return;
-
-        m_sinks.push_back(newSink);
     }
 
-    void RemoveSink(webrtc::AudioTrackSinkInterface* sink) override
+    ~AudioSenderImpl()
+    {
+        if (m_producer) {
+            m_producer->Close();
+        }
+    }
+
+    void init(std::unique_ptr<mediasoupclient::Producer> producer, rtc::scoped_refptr<webrtc::AudioTrackInterface> track)
+    {
+        m_producer = std::move(producer);
+        m_track = std::move(track);
+        m_source = m_track->GetSource();
+    }
+
+private:
+    bool is_closed() override
+    {
+        return false;
+    }
+
+    void send_audio_data(const MutableAudioData& data) override
     {
         std::lock_guard lk(m_mutex);
-        (void) std::remove(m_sinks.begin(), m_sinks.end(), sink);
+
+        for (auto& sink : m_sinks) {
+            sink->OnData(data.data, data.bits_per_sample, data.sample_rate, data.number_of_channels, data.number_of_frames, data.timestamp_ms);
+        }
     }
+
 private:
     std::mutex m_mutex {};
     std::vector<webrtc::AudioTrackSinkInterface*> m_sinks {};
+    std::unique_ptr<mediasoupclient::Producer> m_producer {};
+    rtc::scoped_refptr<webrtc::AudioSourceInterface> m_source {};
+    rtc::scoped_refptr<webrtc::AudioTrackInterface> m_track {};
 };
 
 class DataSenderImpl : public DataSender {
@@ -122,11 +142,16 @@ public:
     {
         m_producer->Close();
     }
-   
+
 private:
     bool is_closed() override
     {
         return m_producer->GetReadyState() != webrtc::DataChannelInterface::kOpen;
+    }
+
+    uint64_t buffered_amount() override
+    {
+        return m_producer->GetBufferedAmount();
     }
 
     void send_data(std::span<const uint8_t> data) override

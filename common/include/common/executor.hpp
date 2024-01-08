@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "./logger.hpp"
+
 namespace cm {
 
 class [[nodiscard]] Executor {
@@ -130,7 +132,19 @@ private:
 
             ++m_tasks_running;
             tasks_lock.unlock();
-            task();
+
+            try {
+                task();
+            } catch (const std::exception& ex) {
+                cm::log("[Executor][ERROR] {}", ex.what());
+            } catch (const std::string& ex) {
+                cm::log("[Executor][ERROR] {}", ex);
+            } catch (const char* ex) {
+                cm::log("[Executor][ERROR] {}", ex);
+            } catch (...) {
+                cm::log("[Executor][ERROR] Unknown exception");
+            }
+
             tasks_lock.lock();
             --m_tasks_running;
 

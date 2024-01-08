@@ -4,8 +4,20 @@
 #include <common/logger.hpp>
 #include <msc/msc.hpp>
 
+#include "./conference_manager.hpp"
+#include "./timer_event_loop.hpp"
 #include "./ui.hpp"
 #include "./viewer_manager.hpp"
+
+struct CommonConfig {
+    bool use_gui;
+    size_t num_network_thread;
+    size_t num_worker_thread;
+    size_t num_peer_connection_factory;
+};
+
+void run_livestream_view_bot(const argparse::ArgumentParser& program, CommonConfig config);
+void run_conference_bot(const argparse::ArgumentParser& program, CommonConfig config);
 
 int main(int argc, const char** argv)
 {
@@ -19,23 +31,47 @@ int main(int argc, const char** argv)
     program.add_argument("-w", "--worker-thread")
         .help("Number of worker thread for blocking mediasoup call")
         .scan<'u', size_t>()
+        .metavar("UINT")
         .default_value(size_t(4));
     program.add_argument("-n", "--network-thread")
         .help("Number of network thread for API call")
         .scan<'u', size_t>()
+        .metavar("UINT")
         .default_value(size_t(4));
     program.add_argument("-p", "--peer-factory")
         .help("Number of peer connection factory, each with its own network, worker and signaling thread.")
         .scan<'u', size_t>()
+        .metavar("UINT")
         .default_value(size_t(1));
 
-    program.add_argument("-i", "--streamer-id")
+    argparse::ArgumentParser livestream_view_bot("livestream");
+    livestream_view_bot.add_argument("-i", "--streamer-id")
         .default_value(std::string(true ? "1174393215" : "1268337150"));
-
-    program.add_argument("-v", "--viewer")
+    livestream_view_bot.add_argument("-v", "--viewer")
         .help("Number of viewer")
         .scan<'u', size_t>()
+        .metavar("UINT")
         .default_value(size_t(10));
+
+    argparse::ArgumentParser conference_bot("conference");
+    conference_bot.add_argument("-r", "--room-count")
+        .help("Number of room")
+        .scan<'u', size_t>()
+        .metavar("UINT")
+        .default_value(size_t(1));
+    conference_bot.add_argument("-u", "--user-per-room")
+        .help("Number of user per room")
+        .scan<'u', size_t>()
+        .metavar("UINT")
+        .default_value(size_t(1));
+    conference_bot.add_argument("--rid")
+        .help("Starting room id")
+        .scan<'u', size_t>()
+        .metavar("UINT")
+        .default_value(size_t(0));
+
+    program.add_subparser(livestream_view_bot);
+    program.add_subparser(conference_bot);
 
     try {
         program.parse_args(argc, argv);
@@ -45,26 +81,48 @@ int main(int argc, const char** argv)
         std::exit(1);
     }
 
-    bool no_gui = program["--nogui"] == true;
-    cm::init_logger(no_gui ? nullptr : "load_test.log");
+    bool use_gui = program["--nogui"] == false;
+    cm::init_logger(use_gui ? "load_test.log" : nullptr);
 
     cm::log("Initializing...");
     msc::initialize();
     cm::log("Initialized");
 
-    size_t num_network_thread = program.get<size_t>("-n");
-    size_t num_worker_thread = program.get<size_t>("-w");
-    size_t num_peer_connection_factory = program.get<size_t>("-p");
+    CommonConfig config {
+        .use_gui = use_gui,
+        .num_network_thread = program.get<size_t>("-n"),
+        .num_worker_thread = program.get<size_t>("-w"),
+        .num_peer_connection_factory = program.get<size_t>("-p"),
+    };
 
+    try {
+        if (program.is_subcommand_used("livestream")) {
+            run_livestream_view_bot(livestream_view_bot, config);
+        } else if (program.is_subcommand_used("conference")) {
+            run_conference_bot(conference_bot, config);
+        } else {
+            std::cout << program;
+            return 0;
+        }
+    } catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        std::exit(1);
+    }
+
+    return 0;
+}
+
+void run_livestream_view_bot(const argparse::ArgumentParser& program, CommonConfig config)
+{
     std::string streamer_id = program.get<std::string>("--streamer-id");
     size_t viewer_count = program.get<size_t>("--viewer");
 
-    std::shared_ptr<ViewerManager> manager = std::make_shared<ViewerManager>(num_worker_thread, num_network_thread, num_peer_connection_factory);
+    std::shared_ptr<ViewerManager> manager = std::make_shared<ViewerManager>(config.num_worker_thread, config.num_network_thread, config.num_peer_connection_factory);
     manager->set_streamer_id(streamer_id);
 
-    if (!no_gui) {
+    if (config.use_gui) {
         setup_ui(manager, viewer_count);
-        return 0;
+        return;
     }
 
     std::thread refresh_ui([&] {
@@ -91,6 +149,18 @@ int main(int argc, const char** argv)
 
     manager->set_viewer_count(viewer_count);
     refresh_ui.join();
+}
 
-    return 0;
+void run_conference_bot(const argparse::ArgumentParser& program, CommonConfig config)
+{
+    size_t room_count = program.get<size_t>("--room-count");
+    size_t user_count = program.get<size_t>("--user-per-room");
+    size_t room_id = program.get<size_t>("--rid");
+
+    std::shared_ptr<ConferenceManager> manager = std::make_shared<ConferenceManager>(config.num_worker_thread, config.num_network_thread, config.num_peer_connection_factory);
+
+    manager->apply_config(room_count, user_count, room_id);
+    timer_event_loop_thread().join();
+
+    fmt::println("Exit somewhat gracefully\n\n");
 }

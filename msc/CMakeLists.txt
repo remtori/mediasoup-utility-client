@@ -16,6 +16,8 @@ target_sources(${PROJECT_NAME} PRIVATE
 	src/msc.cpp
 	src/peer_connection_factory.hpp
     src/peer_connection_factory.cpp
+	src/serde.hpp
+	src/serde.cpp
 )
 
 target_include_directories(${PROJECT_NAME} SYSTEM

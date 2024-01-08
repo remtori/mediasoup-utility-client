@@ -17,8 +17,6 @@ struct ProtooResponse {
     int64_t id;
 
     nlohmann::json data;
-
-    int64_t error_code;
     nlohmann::json error_reason;
 };
 
@@ -34,18 +32,16 @@ struct ProtooRequest {
             .ok = true,
             .id = id,
             .data = std::move(data),
-            .error_code = 0,
             .error_reason = nullptr,
         };
     }
 
-    ProtooResponse err(int64_t error_code, nlohmann::json error_reason)
+    ProtooResponse err(nlohmann::json error_reason)
     {
         return ProtooResponse {
             .ok = false,
             .id = id,
             .data = nullptr,
-            .error_code = error_code,
             .error_reason = std::move(error_reason),
         };
     }
@@ -62,6 +58,7 @@ public:
     ~ProtooClient() = default;
 
     int connect(const std::string& url);
+    using hv::WebSocketClient::close;
 
     void notify(std::string method, nlohmann::json data);
     std::future<ProtooResponse> request(std::string method, nlohmann::json data);

@@ -1,5 +1,6 @@
 #include "common/protoo.hpp"
 
+#include "common/logger.hpp"
 #include <sstream>
 
 namespace cm {
@@ -9,7 +10,7 @@ ProtooClient::ProtooClient(std::shared_ptr<hv::EventLoop> loop)
 {
     onopen = [this] { on_ws_open(); };
     onclose = [this] { on_ws_close(); };
-    onmessage = [this](auto && PH1) { on_ws_message(std::forward<decltype(PH1)>(PH1)); };
+    onmessage = [this](auto&& PH1) { on_ws_message(std::forward<decltype(PH1)>(PH1)); };
 }
 
 int ProtooClient::connect(const std::string& url)
@@ -41,37 +42,40 @@ void ProtooClient::on_ws_message(const std::string& raw_msg)
     if (!msg.is_object())
         return;
 
-    if (msg.value("request", false)) {
-        ProtooRequest request;
-        msg.at("id").get_to(request.id);
-        msg.at("method").get_to(request.method);
-        msg.at("data").get_to(request.data);
+    try {
+        if (msg.value("request", false)) {
+            ProtooRequest request;
+            msg.at("id").get_to(request.id);
+            msg.at("method").get_to(request.method);
+            msg.at("data").get_to(request.data);
 
-        if (on_request)
-            on_request(std::move(request));
-    } else if (msg.value("response", false)) {
-        ProtooResponse response;
-        msg.at("ok").get_to(response.ok);
-        msg.at("id").get_to(response.id);
+            if (on_request)
+                on_request(std::move(request));
+        } else if (msg.value("response", false)) {
+            ProtooResponse response;
+            msg.at("ok").get_to(response.ok);
+            msg.at("id").get_to(response.id);
 
-        if (response.ok) {
-            msg.at("data").get_to(response.data);
-        } else {
-            msg.at("errorCode").get_to(response.error_code);
-            msg.at("errorReason").get_to(response.error_reason);
+            if (response.ok) {
+                msg.at("data").get_to(response.data);
+            } else {
+                msg.at("errorReason").get_to(response.error_reason);
+            }
+
+            const std::scoped_lock lk(m_mutex);
+            if (auto it = m_awaiting_response.find(response.id); it != m_awaiting_response.end()) {
+                it->second->set_value(std::move(response));
+            }
+        } else if (msg.value("notification", false)) {
+            ProtooNotify notification;
+            msg.at("method").get_to(notification.method);
+            msg.at("data").get_to(notification.data);
+
+            if (on_notify)
+                on_notify(std::move(notification));
         }
-
-        const std::scoped_lock lk(m_mutex);
-        if (auto it = m_awaiting_response.find(response.id); it != m_awaiting_response.end()) {
-            it->second->set_value(std::move(response));
-        }
-    } else if (msg.value("notification", false)) {
-        ProtooNotify notification;
-        msg.at("method").get_to(notification.method);
-        msg.at("data").get_to(notification.data);
-
-        if (on_notify)
-            on_notify(std::move(notification));
+    } catch (const std::exception& ex) {
+        cm::log("[ProtooClient][ERROR] {}", ex.what());
     }
 }
 
@@ -90,12 +94,9 @@ void ProtooClient::notify(std::string method, nlohmann::json data)
     };
 
     auto raw_body = body.dump();
-    if (this->isConnected())
-    {
+    if (this->isConnected()) {
         send(raw_body);
-    }
-    else
-    {
+    } else {
         m_buffered_request.emplace_back([this, raw_body = std::move(raw_body)]() {
             this->send(raw_body);
         });
@@ -120,14 +121,11 @@ std::future<ProtooResponse> ProtooClient::request(std::string method, nlohmann::
     }
 
     auto raw_body = body.dump();
-    if (this->isConnected())
-    {
+    if (this->isConnected()) {
         send(raw_body);
-    }
-    else
-    {
+    } else {
         m_buffered_request.emplace_back([this, raw_body = std::move(raw_body)]() {
-           this->send(raw_body);
+            this->send(raw_body);
         });
     }
 
@@ -155,7 +153,6 @@ void ProtooClient::response(ProtooResponse response)
             { "ok", false },
             { "id", response.id },
             { "method", "ws-response" },
-            { "errorCode", response.error_code },
             { "errorReason", std::move(response.error_reason) },
         };
     }

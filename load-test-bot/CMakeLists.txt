@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_sources(${PROJECT_NAME} PRIVATE
+	src/conference_manager.hpp
+	src/conference_manager.cpp
+	src/conference.hpp
+	src/conference.cpp
 	src/consumer.hpp
 	src/main.cpp
 	src/timer_event_loop.hpp
