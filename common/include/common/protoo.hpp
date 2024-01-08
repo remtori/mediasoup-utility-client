@@ -73,10 +73,15 @@ private:
     void on_ws_message(const std::string& msg);
     void on_ws_close() const;
 
+    struct PendingRequest {
+        std::shared_ptr<std::promise<ProtooResponse>> promise;
+        hv::TimerID timeout;
+    };
+
 private:
     std::mutex m_mutex {};
     std::atomic_uint64_t m_request_id_gen { 1 };
-    std::unordered_map<uint64_t, std::shared_ptr<std::promise<ProtooResponse>>> m_awaiting_response {};
+    std::unordered_map<uint64_t, PendingRequest> m_awaiting_response {};
 
     std::vector<std::function<void()>> m_buffered_request {};
 };

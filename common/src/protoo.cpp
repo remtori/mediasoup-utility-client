@@ -28,7 +28,7 @@ int ProtooClient::connect(const std::string& url)
 
 void ProtooClient::on_ws_open()
 {
-    const std::scoped_lock lk(m_mutex);
+    std::scoped_lock lk(m_mutex);
     for (auto& request : m_buffered_request) {
         request();
     }
@@ -62,9 +62,12 @@ void ProtooClient::on_ws_message(const std::string& raw_msg)
                 msg.at("errorReason").get_to(response.error_reason);
             }
 
-            const std::scoped_lock lk(m_mutex);
+            std::scoped_lock lk(m_mutex);
             if (auto it = m_awaiting_response.find(response.id); it != m_awaiting_response.end()) {
-                it->second->set_value(std::move(response));
+                loop()->killTimer(it->second.timeout);
+                it->second.promise->set_value(std::move(response));
+
+                m_awaiting_response.erase(it);
             }
         } else if (msg.value("notification", false)) {
             ProtooNotify notification;
@@ -107,7 +110,7 @@ std::future<ProtooResponse> ProtooClient::request(std::string method, nlohmann::
 {
     auto ret = std::make_shared<std::promise<ProtooResponse>>();
 
-    auto id = m_request_id_gen.fetch_add(1);
+    uint64_t id = m_request_id_gen.fetch_add(1);
     nlohmann::json body = {
         { "request", true },
         { "id", id },
@@ -115,9 +118,16 @@ std::future<ProtooResponse> ProtooClient::request(std::string method, nlohmann::
         { "data", std::move(data) },
     };
 
+    auto timeout = loop()->setTimeout(10000, [=](auto) {
+        ret->set_exception(std::make_exception_ptr(std::runtime_error("request timeout, method=" + method)));
+
+        std::scoped_lock lk(m_mutex);
+        m_awaiting_response.erase(id);
+    });
+
     {
-        const std::scoped_lock lk(m_mutex);
-        m_awaiting_response.insert({ id, ret });
+        std::scoped_lock lk(m_mutex);
+        m_awaiting_response.insert({ id, PendingRequest { ret, timeout } });
     }
 
     auto raw_body = body.dump();
@@ -128,10 +138,6 @@ std::future<ProtooResponse> ProtooClient::request(std::string method, nlohmann::
             this->send(raw_body);
         });
     }
-
-    loop()->setTimeout(10000, [ret](auto) {
-        ret->set_exception(std::make_exception_ptr(std::runtime_error("request timeout")));
-    });
 
     return ret->get_future();
 }
@@ -160,5 +166,4 @@ void ProtooClient::response(ProtooResponse response)
     auto raw_body = body.dump();
     send(raw_body);
 }
-
 }
