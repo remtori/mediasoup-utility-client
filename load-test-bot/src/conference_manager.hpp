@@ -5,6 +5,15 @@
 #include <mutex>
 
 class ConferenceManager {
+public:
+    struct Stats {
+        std::unordered_map<ConferenceStatus, uint32_t> status {};
+        std::unordered_map<size_t, uint32_t> consume_peer {};
+        size_t productive_peer { 0 };
+        float avg_peer_count { 0 };
+        float avg_frame_rate { 0 };
+    };
+
 private:
     std::string m_device_id;
     std::shared_ptr<cm::HttpClient> m_http_client;
@@ -18,6 +27,7 @@ private:
     size_t m_user_per_room { 4 };
 
     hv::TimerID m_tick_producer_timer {};
+    Stats m_stats {};
 
 public:
     ConferenceManager(size_t num_worker_thread, size_t num_network_thread, size_t num_peer_connection_factory);
@@ -25,14 +35,7 @@ public:
 
     void apply_config(size_t room_count, size_t user_per_room, size_t starting_room_id = 0);
 
-    struct Stats {
-        std::unordered_map<ConferenceStatus, uint32_t> status {};
-        size_t productive_peer { 0 };
-        float avg_peer_count { 0 };
-        float avg_frame_rate { 0 };
-    };
-
-    Stats stats();
+    const Stats& stats();
 
 private:
     void tick_producer();

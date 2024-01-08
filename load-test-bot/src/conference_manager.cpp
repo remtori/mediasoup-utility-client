@@ -85,21 +85,30 @@ void ConferenceManager::tick_producer()
     }
 }
 
-ConferenceManager::Stats ConferenceManager::stats()
+const ConferenceManager::Stats& ConferenceManager::stats()
 {
-    Stats stats;
+    m_stats.status.clear();
+    m_stats.consume_peer.clear();
+    m_stats.productive_peer = 0;
+    m_stats.avg_peer_count = 0;
+    m_stats.avg_frame_rate = 0;
+
+    for (size_t i = 0; i < m_user_per_room; i++) {
+        m_stats.consume_peer[i] = 0;
+    }
 
     std::lock_guard lk(m_mutex);
     for (auto& conference : m_peers) {
         auto state = conference->state();
-        stats.avg_frame_rate += conference->avg_frame_rate();
-        stats.avg_peer_count += state.peer_count;
-        stats.productive_peer += state.produce_success;
-        stats.status[state.status]++;
+        m_stats.avg_frame_rate += conference->avg_frame_rate();
+        m_stats.avg_peer_count += state.peer_count;
+        m_stats.productive_peer += state.produce_success;
+        m_stats.status[state.status]++;
+        m_stats.consume_peer[state.peer_count]++;
     }
 
-    stats.avg_frame_rate /= m_peers.size();
-    stats.avg_peer_count /= m_peers.size();
+    m_stats.avg_frame_rate /= m_peers.size();
+    m_stats.avg_peer_count /= m_peers.size();
 
-    return stats;
+    return m_stats;
 }

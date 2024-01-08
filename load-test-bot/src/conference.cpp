@@ -119,7 +119,7 @@ void ConferencePeer::tick_producer()
         std::generate(m_buffer.begin(), m_buffer.end(), []() { return std::rand() % 256; });
     }
 
-    if (m_self_data_sender) {
+    if (m_self_data_sender && m_self_data_sender->buffered_amount() == 0) {
         std::span data(m_buffer.begin(), 300);
 
         cm::CRC32 crc32;

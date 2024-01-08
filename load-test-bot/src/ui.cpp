@@ -164,6 +164,21 @@ void setup_conference_bot_ui(std::shared_ptr<ConferenceManager> manager, size_t 
             ftxui::text(fmt::format(" {}", count)) });
     };
 
+    auto consumer_count_gauge = [&](const std::unordered_map<size_t, uint32_t>& map) {
+        std::vector<std::shared_ptr<ftxui::Node>> children;
+        children.reserve(map.size());
+
+        for (const auto& [num, count] : map) {
+            auto line = ftxui::hbox({ ftxui::text(fmt::format("consume {:02} peer ", num)),
+                ftxui::gauge(float(count) / float(room_count * user_count)),
+                ftxui::text(fmt::format(" {}", count)) });
+
+            children.push_back(std::move(line));
+        }
+
+        return ftxui::vbox(children);
+    };
+
     auto renderer
         = ftxui::Renderer(
             ftxui::Container::Vertical({
@@ -204,8 +219,6 @@ void setup_conference_bot_ui(std::shared_ptr<ConferenceManager> manager, size_t 
                                    gauge("failed          ", stats.status[ConferenceStatus::Failed]),
                                    gauge("disconnected    ", stats.status[ConferenceStatus::Disconnected]),
                                    gauge("closed          ", stats.status[ConferenceStatus::Closed]),
-                                   ftxui::text("=== Productive Peer ===") | ftxui::bold,
-                                   gauge("                ", stats.productive_peer),
                                    ftxui::text("=== Error ===") | ftxui::bold,
                                    gauge("exception       ", stats.status[ConferenceStatus::Exception]),
                                }) | ftxui::flex,
@@ -213,6 +226,9 @@ void setup_conference_bot_ui(std::shared_ptr<ConferenceManager> manager, size_t 
                                ftxui::vbox({
                                    ftxui::text(fmt::format("Average FPS       : {:8.4f}", stats.avg_frame_rate)) | ftxui::bold,
                                    ftxui::text(fmt::format("Average peer count: {:8.4f}", stats.avg_peer_count)) | ftxui::bold,
+                                   ftxui::text("=== Peer Statistics ===") | ftxui::bold,
+                                   gauge("productive peer ", stats.productive_peer),
+                                   consumer_count_gauge(stats.consume_peer),
                                }) | ftxui::flex,
                            }),
                        })
