@@ -26,9 +26,9 @@ const std::string kVideo = "video";
 
 class FFIMediasoupLogHandler : public mediasoupclient::Logger::LogHandlerInterface {
 public:
-    void OnLog(mediasoupclient::Logger::LogLevel level, char* payload, size_t) override
+    void OnLog(mediasoupclient::Logger::LogLevel, char* payload, size_t size) override
     {
-        printf("[MS](%d): %s\n", static_cast<int>(level), payload);
+        cm::log("[MS]{}", std::string_view(payload, size));
     }
 };
 
@@ -384,6 +384,7 @@ void initialize()
         return;
 
     s_initialized = true;
+    cm::init_logger("msc.log");
     rtc::InitializeSSL();
     rtc::InitRandom(static_cast<int>(rtc::TimeMillis()));
     // rtc::LogMessage::LogToDebug(rtc::LS_INFO);

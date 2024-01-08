@@ -35,6 +35,7 @@ PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
+	common
     mediasoupclient
 	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 	$<$<PLATFORM_ID:Windows>:secur32.lib>
