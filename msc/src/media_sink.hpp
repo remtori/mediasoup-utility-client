@@ -136,7 +136,7 @@ private:
     void OnMessage(mediasoupclient::DataConsumer*, const webrtc::DataBuffer& buffer) override
     {
         if (m_user_consumer) {
-            m_user_consumer->on_data({ buffer.data.data(), buffer.size() });
+            m_user_consumer->on_data(std::span(buffer.data.data(), buffer.size()));
         }
     }
 

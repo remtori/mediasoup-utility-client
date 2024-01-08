@@ -161,7 +161,7 @@ private:
             return;
         }
 
-        m_buffer.EnsureCapacity(data.size_bytes());
+        m_buffer.SetSize(data.size_bytes());
         std::memcpy(m_buffer.MutableData(), data.data(), data.size_bytes());
 
         webrtc::DataBuffer data_buffer(m_buffer, true);

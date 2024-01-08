@@ -162,7 +162,7 @@ private:
     std::unique_ptr<mediasoupclient::RecvTransport> m_recv_transport { nullptr };
 
     std::vector<std::unique_ptr<SinkImpl>> m_sinks {};
-    std::vector<std::unique_ptr<DataConsumerImpl>> m_dataSinks {};
+    std::vector<std::unique_ptr<DataConsumerImpl>> m_data_sinks {};
 
     std::unordered_map<
         const void*,
@@ -334,14 +334,15 @@ void DeviceImpl::create_data_sink(const std::string& consumer_id, const std::str
             protocol));
 
     wrapper_consumer->set_consumer(std::move(data_consumer));
+    m_data_sinks.push_back(std::move(wrapper_consumer));
 }
 
 void DeviceImpl::close_data_sink(const std::shared_ptr<DataConsumer>& user_consumer) noexcept
 {
-    for (auto it = m_dataSinks.begin(); it != m_dataSinks.end(); ++it) {
+    for (auto it = m_data_sinks.begin(); it != m_data_sinks.end(); ++it) {
         auto& sink = *it;
         if (sink->is_user_ptr_equal(user_consumer.get())) {
-            m_dataSinks.erase(it);
+            m_data_sinks.erase(it);
             break;
         }
     }
