@@ -99,6 +99,7 @@ int main(int argc, const char** argv)
         if (program.is_subcommand_used("livestream")) {
             run_livestream_view_bot(livestream_view_bot, config);
         } else if (program.is_subcommand_used("conference")) {
+            fmt::println("Running conference bot with \n{} network_thread(s)\n{} worker_thread(s)\n{} peer_connection_factory(ies)\n", config.num_network_thread, config.num_worker_thread, config.num_peer_connection_factory);
             run_conference_bot(conference_bot, config);
         } else {
             std::cout << program;

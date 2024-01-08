@@ -118,6 +118,7 @@ void Viewer::stop()
 
 std::future<msc::CreateTransportOptions> Viewer::create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept
 {
+    (void)kind;
     (void)rtp_capabilities;
 
     msc::CreateTransportOptions options;
@@ -134,6 +135,7 @@ std::future<msc::CreateTransportOptions> Viewer::create_server_side_transport(ms
 
 std::future<void> Viewer::connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept
 {
+    (void)transport_id;
     nlohmann::json body = {
         { "dtlsParameters", dtls_parameters }
     };

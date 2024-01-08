@@ -1,11 +1,16 @@
 #include "./conference_manager.hpp"
 
 #include "./timer_event_loop.hpp"
+#include <random>
+
+static uint32_t s_starting_user_id = 1;
 
 ConferenceManager::ConferenceManager(size_t num_worker_thread, size_t num_network_thread, size_t num_peer_connection_factory)
     : m_http_client(std::make_shared<cm::HttpClient>(std::make_shared<hv::AsyncHttpClient>()))
 {
-    m_device_id = "ltb_" + std::to_string(std::rand());
+    std::random_device rd;
+    std::srand(rd());
+    m_device_id = "ltb_" + std::to_string(rd());
 
     m_event_loops.reserve(num_network_thread);
     for (size_t i = 0; i < num_network_thread; i++) {
@@ -65,7 +70,9 @@ void ConferenceManager::apply_config(size_t room_count, size_t user_per_room, si
     for (size_t i = 0; i < m_room_count; i++) {
         for (size_t j = 0; j < m_user_per_room; j++) {
             auto& conference = m_peers[i * m_user_per_room + j];
-            conference->joinRoom(m_device_id + "_user_" + std::to_string(j), "werewolf_" + std::to_string(starting_room_id + i + 10000));
+
+            uint32_t user_id = s_starting_user_id++;
+            conference->joinRoom(m_device_id + "_u" + std::to_string(10000 + user_id), "ltb_r" + std::to_string(starting_room_id + i));
         }
     }
 }

@@ -38,3 +38,5 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall -Wextra -Wpedantic
 )
+
+set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)

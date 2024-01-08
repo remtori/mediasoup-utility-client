@@ -8,6 +8,28 @@
 
 #include "./consumer.hpp"
 
+enum class ConferenceStatus {
+    Idle,
+    Handshaking,
+    Exception,
+    New,
+    Checking,
+    Connected,
+    Completed,
+    Failed,
+    Disconnected,
+    Closed,
+};
+
+struct ConferenceState {
+    ConferenceStatus status { ConferenceStatus::Idle };
+    uint32_t peer_count { 0 };
+    uint32_t data_consumer_count { 0 };
+    uint32_t audio_consumer_count { 0 };
+    bool produce_data { false };
+    bool produce_audio { false };
+};
+
 class ConferencePeer : public msc::DeviceDelegate
     , public std::enable_shared_from_this<ConferencePeer> {
 private:
@@ -29,6 +51,8 @@ private:
     std::string m_user_id {};
     std::string m_room_id {};
 
+    ConferenceState m_state {};
+
     std::vector<uint8_t> m_buffer {};
     std::shared_ptr<msc::DataSender> m_self_data_sender {};
     std::shared_ptr<msc::AudioSender> m_self_audio_sender {};
@@ -44,19 +68,13 @@ public:
     void tick_producer();
 
 private:
-    Peer& get_or_create_peer(const std::string& peer_id);
-
-private:
     void on_protoo_notify(cm::ProtooNotify);
     void on_protoo_request(cm::ProtooRequest);
     void start_consuming(nlohmann::json consumerInfos);
 
     inline nlohmann::json request(std::string method, nlohmann::json body)
     {
-        cm::log("[Network][{}] request={} body={}", m_user_id, method, body.dump());
-        auto resp = m_protoo.request(std::move(method), std::move(body)).get();
-        cm::log("[Network][{}] response={} ok={} body={}", m_user_id, method, resp.ok, resp.data.dump());
-
+        auto resp = m_protoo.request(method, std::move(body)).get();
         if (resp.ok) {
             return resp.data;
         }

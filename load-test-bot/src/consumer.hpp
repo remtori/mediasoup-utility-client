@@ -4,7 +4,6 @@
 #include <fmt/format.h>
 #include <msc/msc.hpp>
 
-
 struct VideoStat {
     int freeze_time_ms;
     float frame_rate;

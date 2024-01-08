@@ -28,7 +28,7 @@ class FFIMediasoupLogHandler : public mediasoupclient::Logger::LogHandlerInterfa
 public:
     void OnLog(mediasoupclient::Logger::LogLevel level, char* payload, size_t) override
     {
-        printf("[MS](%d): %s", static_cast<int>(level), payload);
+        printf("[MS](%d): %s\n", static_cast<int>(level), payload);
     }
 };
 

@@ -18,8 +18,16 @@ ConferencePeer::ConferencePeer(
     , m_peer_connection_factory(std::move(peer_connection_factory))
 {
     m_device = msc::Device::create(this, m_peer_connection_factory);
-    m_protoo.on_notify = std::bind(&ConferencePeer::on_protoo_notify, this, std::placeholders::_1);
-    m_protoo.on_request = std::bind(&ConferencePeer::on_protoo_request, this, std::placeholders::_1);
+    m_protoo.on_notify = [this](cm::ProtooNotify req) {
+        m_executor->push_task([this, req = std::move(req)]() {
+            on_protoo_notify(std::move(req));
+        });
+    };
+    m_protoo.on_request = [this](cm::ProtooRequest req) {
+        m_executor->push_task([this, req = std::move(req)]() {
+            on_protoo_request(std::move(req));
+        });
+    };
 }
 
 ConferencePeer::~ConferencePeer()
@@ -57,7 +65,6 @@ void ConferencePeer::joinRoom(std::string user_id, std::string room_id)
         auto consumer_infos = request("consumeAllExistingProducer", { { "rtpCapabilities", m_device->rtp_capabilities() } });
         start_consuming(consumer_infos);
 
-        m_self_data_sender = m_device->create_data_source("virtual-avatar", "", false, 0, 0);
         m_self_audio_sender = m_device->create_audio_source(
             nullptr,
             {
@@ -65,6 +72,8 @@ void ConferencePeer::joinRoom(std::string user_id, std::string room_id)
                 { "opusDtx", true },
             },
             nullptr);
+
+        m_self_data_sender = m_device->create_data_source("virtual-avatar", "", false, 0, 0);
     });
 }
 
@@ -83,23 +92,22 @@ void ConferencePeer::leave(bool blocking)
     }
 }
 
-ConferencePeer::Peer& ConferencePeer::get_or_create_peer(const std::string& peer_id)
-{
-    auto it = m_peers.find(peer_id);
-    if (it != m_peers.end()) {
-        return it->second;
-    }
-
-    auto& peer = m_peers[peer_id];
-    return peer;
-}
-
 void ConferencePeer::tick_producer()
 {
-    m_buffer.resize(1760);
-    std::generate(m_buffer.begin(), m_buffer.end(), []() { return rand() % 256; });
+    {
+        m_buffer.resize(1760);
+        std::generate(m_buffer.begin(), m_buffer.end(), []() { return std::rand() % 256; });
+    }
+
     if (m_self_data_sender) {
-        m_self_data_sender->send_data(std::span(m_buffer.begin(), 300));
+        std::span data(m_buffer.begin(), 300);
+
+        cm::CRC32 crc32;
+        crc32.update(data.subspan(4));
+        uint32_t checksum = crc32.digest();
+        std::memcpy(data.data(), &checksum, sizeof(checksum));
+
+        m_self_data_sender->send_data(data);
     }
 
     // this will be called every 10ms, so sending 440 frames every 10ms will be 44000Hz
@@ -123,12 +131,13 @@ void ConferencePeer::start_consuming(nlohmann::json consumer_infos)
         const auto& producer_id = consumer_info.at("producerId").get<std::string>();
         const auto& producer_type = consumer_info.at("producerType").get<std::string>();
 
-        auto& peer = get_or_create_peer(peer_id);
+        auto& peer = m_peers[peer_id];
         if (producer_type == "data") {
             auto stream_id = consumer_info.at("streamId").get<int16_t>();
             const auto& label = consumer_info.at("label").get<std::string>();
             const auto& protocol = consumer_info.at("protocol").get<std::string>();
 
+            cm::log("[Conference][{}] start consuming data from {}: consumer_id={} producer_id={} stream_id={} label={}", m_user_id, peer_id, consumer_id, producer_id, stream_id, label);
             if (!peer.data_consumer) {
                 peer.data_consumer = std::make_shared<ReportDataConsumer>();
             }
@@ -138,6 +147,7 @@ void ConferencePeer::start_consuming(nlohmann::json consumer_infos)
             const std::string kind = producer_type == "audio" ? "audio" : "video";
             auto rtp_parameters = consumer_info.at("rtpParameters");
 
+            cm::log("[Conference][{}] start consuming {} from {}: consumer_id={} producer_id={}", m_user_id, kind, peer_id, consumer_id, producer_id);
             if (kind == "audio") {
                 if (!peer.audio_consumer) {
                     peer.audio_consumer = std::make_shared<msc::DummyAudioConsumer>();
