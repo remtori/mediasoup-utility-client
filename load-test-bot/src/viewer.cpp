@@ -127,9 +127,9 @@ std::future<msc::CreateTransportOptions> Viewer::create_server_side_transport(ms
     options.dtls_parameters = m_create_transport_option.value("dtlsParameters", nlohmann::json());
     options.sctp_parameters = m_create_transport_option.value("sctpParameters", nlohmann::json());
 
-    std::promise<msc::CreateTransportOptions> promise;
-    promise.set_value(options);
-    return promise.get_future();
+    std::promise<msc::CreateTransportOptions> ret;
+    ret.set_value(options);
+    return ret.get_future();
 }
 
 std::future<void> Viewer::connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept

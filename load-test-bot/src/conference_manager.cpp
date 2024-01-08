@@ -8,17 +8,17 @@ ConferenceManager::ConferenceManager(size_t num_worker_thread, size_t num_networ
     m_device_id = "ltb_" + std::to_string(std::rand());
 
     m_event_loops.reserve(num_network_thread);
-    for (auto i = 0; i < num_network_thread; i++) {
+    for (size_t i = 0; i < num_network_thread; i++) {
         m_event_loops.push_back(std::make_shared<hv::EventLoop>());
     }
 
     m_executors.reserve(num_worker_thread);
-    for (auto i = 0; i < num_worker_thread; i++) {
+    for (size_t i = 0; i < num_worker_thread; i++) {
         m_executors.push_back(std::make_shared<cm::Executor>(1));
     }
 
     m_peer_connection_factories.reserve(num_peer_connection_factory);
-    for (auto i = 0; i < num_peer_connection_factory; i++) {
+    for (size_t i = 0; i < num_peer_connection_factory; i++) {
         m_peer_connection_factories.push_back(msc::create_peer_connection_factory());
     }
 
@@ -62,8 +62,8 @@ void ConferenceManager::apply_config(size_t room_count, size_t user_per_room, si
         m_peers.resize(required_user_count);
     }
 
-    for (auto i = 0; i < m_room_count; i++) {
-        for (auto j = 0; j < m_user_per_room; j++) {
+    for (size_t i = 0; i < m_room_count; i++) {
+        for (size_t j = 0; j < m_user_per_room; j++) {
             auto& conference = m_peers[i * m_user_per_room + j];
             conference->joinRoom(m_device_id + "_user_" + std::to_string(j), "werewolf_" + std::to_string(starting_room_id + i + 10000));
         }

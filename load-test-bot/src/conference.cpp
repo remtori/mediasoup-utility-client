@@ -201,6 +201,7 @@ void ConferencePeer::on_protoo_request(cm::ProtooRequest req)
 
 std::future<msc::CreateTransportOptions> ConferencePeer::create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept
 {
+    (void)rtp_capabilities;
     auto info = m_create_transport_option[kind == msc::TransportKind::Send ? "sendTransport" : "recvTransport"];
 
     msc::CreateTransportOptions options;
@@ -210,13 +211,14 @@ std::future<msc::CreateTransportOptions> ConferencePeer::create_server_side_tran
     options.dtls_parameters = info.value("dtlsParameters", nlohmann::json());
     options.sctp_parameters = info.value("sctpParameters", nlohmann::json());
 
-    std::promise<msc::CreateTransportOptions> promise;
-    promise.set_value(options);
-    return promise.get_future();
+    std::promise<msc::CreateTransportOptions> ret;
+    ret.set_value(options);
+    return ret.get_future();
 }
 
 std::future<void> ConferencePeer::connect_transport(msc::TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept
 {
+    (void)transport_id;
     request("connectWebRtcTransport", {
                                           { "isSend", kind == msc::TransportKind::Send },
                                           { "dtlsParameters", dtls_parameters },
@@ -229,6 +231,7 @@ std::future<void> ConferencePeer::connect_transport(msc::TransportKind kind, con
 
 std::future<std::string> ConferencePeer::connect_producer(const std::string& transport_id, msc::MediaKind kind, const nlohmann::json& rtp_parameters) noexcept
 {
+    (void)transport_id;
     auto resp = request("produce", {
                                        { "kind", kind == msc::MediaKind::Audio ? "audio" : "video" },
                                        { "rtpParameters", rtp_parameters },
@@ -241,6 +244,7 @@ std::future<std::string> ConferencePeer::connect_producer(const std::string& tra
 
 std::future<std::string> ConferencePeer::connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept
 {
+    (void)transport_id;
     auto resp = request("produceData", {
                                            { "label", label },
                                            { "protocol", protocol },
@@ -254,4 +258,5 @@ std::future<std::string> ConferencePeer::connect_data_producer(const std::string
 
 void ConferencePeer::on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept
 {
+    (void)connection_state;
 }
