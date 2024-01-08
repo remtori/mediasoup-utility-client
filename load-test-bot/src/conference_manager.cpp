@@ -27,7 +27,7 @@ ConferenceManager::ConferenceManager(size_t num_worker_thread, size_t num_networ
         m_peer_connection_factories.push_back(msc::create_peer_connection_factory());
     }
 
-    m_tick_producer_timer = timer_event_loop().setInterval(10, [this](auto) {
+    m_tick_producer_timer = timer_event_loop().setInterval(60, [this](auto) {
         this->tick_producer();
     });
 }
@@ -83,4 +83,23 @@ void ConferenceManager::tick_producer()
     for (auto& conference : m_peers) {
         conference->tick_producer();
     }
+}
+
+ConferenceManager::Stats ConferenceManager::stats()
+{
+    Stats stats;
+
+    std::lock_guard lk(m_mutex);
+    for (auto& conference : m_peers) {
+        auto state = conference->state();
+        stats.avg_frame_rate += conference->avg_frame_rate();
+        stats.avg_peer_count += state.peer_count;
+        stats.productive_peer += state.produce_success;
+        stats.status[state.status]++;
+    }
+
+    stats.avg_frame_rate /= m_peers.size();
+    stats.avg_peer_count /= m_peers.size();
+
+    return stats;
 }

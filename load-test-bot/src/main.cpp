@@ -58,12 +58,12 @@ int main(int argc, const char** argv)
         .help("Number of room")
         .scan<'u', size_t>()
         .metavar("UINT")
-        .default_value(size_t(1));
+        .default_value(size_t(10));
     conference_bot.add_argument("-u", "--user-per-room")
         .help("Number of user per room")
         .scan<'u', size_t>()
         .metavar("UINT")
-        .default_value(size_t(1));
+        .default_value(size_t(4));
     conference_bot.add_argument("--rid")
         .help("Starting room id")
         .scan<'u', size_t>()
@@ -122,7 +122,7 @@ void run_livestream_view_bot(const argparse::ArgumentParser& program, CommonConf
     manager->set_streamer_id(streamer_id);
 
     if (config.use_gui) {
-        setup_ui(manager, viewer_count);
+        setup_livestream_bot_ui(manager, viewer_count);
         return;
     }
 
@@ -160,8 +160,13 @@ void run_conference_bot(const argparse::ArgumentParser& program, CommonConfig co
 
     std::shared_ptr<ConferenceManager> manager = std::make_shared<ConferenceManager>(config.num_worker_thread, config.num_network_thread, config.num_peer_connection_factory);
 
+    if (config.use_gui) {
+        setup_conference_bot_ui(manager, room_count, user_count, room_id);
+        return;
+    }
+
     manager->apply_config(room_count, user_count, room_id);
     timer_event_loop_thread().join();
 
-    fmt::println("Exit somewhat gracefully\n\n");
+    cm::log("Exit somewhat gracefully\n");
 }

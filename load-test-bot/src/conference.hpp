@@ -10,24 +10,21 @@
 
 enum class ConferenceStatus {
     Idle,
-    Handshaking,
-    Exception,
     New,
     Checking,
+    Connecting,
     Connected,
     Completed,
     Failed,
     Disconnected,
     Closed,
+    Exception,
 };
 
 struct ConferenceState {
     ConferenceStatus status { ConferenceStatus::Idle };
     uint32_t peer_count { 0 };
-    uint32_t data_consumer_count { 0 };
-    uint32_t audio_consumer_count { 0 };
-    bool produce_data { false };
-    bool produce_audio { false };
+    bool produce_success { false };
 };
 
 class ConferencePeer : public msc::DeviceDelegate
@@ -66,6 +63,9 @@ public:
     void leave(bool blocking = false);
 
     void tick_producer();
+
+    float avg_frame_rate();
+    ConferenceState state() const { return m_state; }
 
 private:
     void on_protoo_notify(cm::ProtooNotify);

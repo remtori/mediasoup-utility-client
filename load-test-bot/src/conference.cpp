@@ -39,41 +39,48 @@ void ConferencePeer::joinRoom(std::string user_id, std::string room_id)
 {
     m_user_id = std::move(user_id);
     m_room_id = std::move(room_id);
+    m_state.produce_success = false;
 
     m_executor->push_task([this]() {
-        auto auth_response = m_http_client->get(HTTP_ENDPOINT + "/api/conference/__internalRouteForTestPurpose_REMOVE_IN_PROD?uid=" + m_user_id).get();
-        auto auth_json = auth_response->GetJson();
+        try {
+            auto auth_response = m_http_client->get(HTTP_ENDPOINT + "/api/conference/__internalRouteForTestPurpose_REMOVE_IN_PROD?uid=" + m_user_id).get();
+            auto auth_json = auth_response->GetJson();
 
-        m_protoo.connect(WS_ENDPOINT + "/conference/connect?rid=" + m_room_id + "&token=" + auth_json.at("data").get<std::string>());
+            m_protoo.connect(WS_ENDPOINT + "/conference/connect?rid=" + m_room_id + "&token=" + auth_json.at("data").get<std::string>());
 
-        request("join", {
-                            { "roomId", m_room_id },
-                            { "deviceId", "BOT1111" },
-                            { "deviceModel", "Linux" },
-                            { "networkType", "LAN" },
-                            { "gameId", "werewolf" },
-                            { "cameraResolution", "TODO" },
-                        });
+            request("join", {
+                                { "roomId", m_room_id },
+                                { "deviceId", "BOT1111" },
+                                { "deviceModel", "Linux" },
+                                { "networkType", "LAN" },
+                                { "gameId", "werewolf" },
+                                { "cameraResolution", "TODO" },
+                            });
 
-        auto routerRtpCapabilities = request("getRouterRtpCapabilities", {});
+            auto routerRtpCapabilities = request("getRouterRtpCapabilities", {});
 
-        m_device->load(routerRtpCapabilities);
-        m_create_transport_option = request("createWebRtcTransport", {});
-        m_device->ensure_transport(msc::TransportKind::Send);
-        m_device->ensure_transport(msc::TransportKind::Recv);
+            m_device->load(routerRtpCapabilities);
+            m_create_transport_option = request("createWebRtcTransport", {});
+            m_device->ensure_transport(msc::TransportKind::Send);
+            m_device->ensure_transport(msc::TransportKind::Recv);
 
-        auto consumer_infos = request("consumeAllExistingProducer", { { "rtpCapabilities", m_device->rtp_capabilities() } });
-        start_consuming(consumer_infos);
+            auto consumer_infos = request("consumeAllExistingProducer", { { "rtpCapabilities", m_device->rtp_capabilities() } });
+            start_consuming(consumer_infos);
 
-        m_self_audio_sender = m_device->create_audio_source(
-            nullptr,
-            {
-                { "opusStereo", true },
-                { "opusDtx", true },
-            },
-            nullptr);
+            m_self_audio_sender = m_device->create_audio_source(
+                nullptr,
+                {
+                    { "opusStereo", true },
+                    { "opusDtx", true },
+                },
+                nullptr);
 
-        m_self_data_sender = m_device->create_data_source("virtual-avatar", "", false, 0, 0);
+            m_self_data_sender = m_device->create_data_source("virtual-avatar", "", false, 0, 0);
+            m_state.produce_success = true;
+        } catch (...) {
+            m_state.status = ConferenceStatus::Exception;
+            std::rethrow_exception(std::current_exception());
+        }
     });
 }
 
@@ -85,11 +92,24 @@ void ConferencePeer::leave(bool blocking)
         m_peers.clear();
         m_self_audio_sender.reset();
         m_self_data_sender.reset();
+        m_state.status = ConferenceStatus::Idle;
     });
 
     if (blocking) {
         fut.get();
     }
+}
+
+float ConferencePeer::avg_frame_rate()
+{
+    float sum_frame_rate = 0;
+    for (auto& [_, peer] : m_peers) {
+        if (peer.data_consumer) {
+            sum_frame_rate += peer.data_consumer->data_stat().frame_rate;
+        }
+    }
+
+    return sum_frame_rate / m_peers.size();
 }
 
 void ConferencePeer::tick_producer()
@@ -163,6 +183,8 @@ void ConferencePeer::start_consuming(nlohmann::json consumer_infos)
             }
         }
     }
+
+    m_state.peer_count = m_peers.size();
 }
 
 void ConferencePeer::on_protoo_notify(cm::ProtooNotify req)
@@ -268,5 +290,22 @@ std::future<std::string> ConferencePeer::connect_data_producer(const std::string
 
 void ConferencePeer::on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept
 {
-    (void)connection_state;
+    if (connection_state == "new")
+        m_state.status = ConferenceStatus::New;
+    else if (connection_state == "checking")
+        m_state.status = ConferenceStatus::Checking;
+    else if (connection_state == "connected")
+        m_state.status = ConferenceStatus::Connected;
+    else if (connection_state == "completed")
+        m_state.status = ConferenceStatus::Completed;
+    else if (connection_state == "failed")
+        m_state.status = ConferenceStatus::Failed;
+    else if (connection_state == "disconnected")
+        m_state.status = ConferenceStatus::Disconnected;
+    else if (connection_state == "closed")
+        m_state.status = ConferenceStatus::Closed;
+
+    if (m_state.status == ConferenceStatus::Closed || m_state.status == ConferenceStatus::Disconnected || m_state.status == ConferenceStatus::Failed) {
+        leave();
+    }
 }

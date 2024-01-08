@@ -25,6 +25,15 @@ public:
 
     void apply_config(size_t room_count, size_t user_per_room, size_t starting_room_id = 0);
 
+    struct Stats {
+        std::unordered_map<ConferenceStatus, uint32_t> status {};
+        size_t productive_peer { 0 };
+        float avg_peer_count { 0 };
+        float avg_frame_rate { 0 };
+    };
+
+    Stats stats();
+
 private:
     void tick_producer();
 };
