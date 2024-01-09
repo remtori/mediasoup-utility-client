@@ -1,10 +1,10 @@
 #pragma once
 
 #include <common/executor.hpp>
-#include <common/http_client.hpp>
 #include <common/logger.hpp>
-#include <common/protoo.hpp>
 #include <msc/msc.hpp>
+#include <net/http_client.hpp>
+#include <net/protoo.hpp>
 
 #include "./consumer.hpp"
 
@@ -38,8 +38,8 @@ private:
 
     std::shared_ptr<cm::Executor> m_executor;
     hv::EventLoopPtr m_event_loop;
-    cm::ProtooClient m_protoo;
-    std::shared_ptr<cm::HttpClient> m_http_client;
+    net::ProtooClient m_protoo;
+    std::shared_ptr<net::HttpClient> m_http_client;
     std::shared_ptr<msc::PeerConnectionFactoryTuple> m_peer_connection_factory;
 
     std::shared_ptr<msc::Device> m_device { nullptr };
@@ -56,7 +56,7 @@ private:
     std::unordered_map<std::string, Peer> m_peers {};
 
 public:
-    ConferencePeer(std::shared_ptr<cm::Executor>, hv::EventLoopPtr, std::shared_ptr<cm::HttpClient>, std::shared_ptr<msc::PeerConnectionFactoryTuple>);
+    ConferencePeer(std::shared_ptr<cm::Executor>, hv::EventLoopPtr, std::shared_ptr<net::HttpClient>, std::shared_ptr<msc::PeerConnectionFactoryTuple>);
     ~ConferencePeer() override;
 
     void joinRoom(std::string user_id, std::string room_id);
@@ -68,8 +68,8 @@ public:
     ConferenceState state() const { return m_state; }
 
 private:
-    void on_protoo_notify(cm::ProtooNotify);
-    void on_protoo_request(cm::ProtooRequest);
+    void on_protoo_notify(net::ProtooNotify);
+    void on_protoo_request(net::ProtooRequest);
     void start_consuming(nlohmann::json consumerInfos);
 
     inline nlohmann::json request(std::string method, nlohmann::json body)

@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "./json.hpp"
+#include <common/json.hpp>
 
-namespace cm {
+namespace net {
 
 struct ProtooResponse {
     bool ok;

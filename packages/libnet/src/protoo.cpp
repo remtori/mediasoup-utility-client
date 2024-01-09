@@ -1,9 +1,9 @@
-#include "common/protoo.hpp"
+#include "net/protoo.hpp"
 
-#include "common/logger.hpp"
+#include <common/logger.hpp>
 #include <sstream>
 
-namespace cm {
+namespace net {
 
 ProtooClient::ProtooClient(std::shared_ptr<hv::EventLoop> loop)
     : WebSocketClient(std::move(loop))

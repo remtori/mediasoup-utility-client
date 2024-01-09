@@ -6,7 +6,7 @@
 static uint32_t s_starting_user_id = 1;
 
 ConferenceManager::ConferenceManager(size_t num_worker_thread, size_t num_network_thread, size_t num_peer_connection_factory)
-    : m_http_client(std::make_shared<cm::HttpClient>(std::make_shared<hv::AsyncHttpClient>()))
+    : m_http_client(std::make_shared<net::HttpClient>(std::make_shared<hv::AsyncHttpClient>()))
 {
     std::random_device rd;
     std::srand(rd());

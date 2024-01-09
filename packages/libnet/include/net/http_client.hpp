@@ -4,7 +4,7 @@
 
 #include <future>
 
-namespace cm {
+namespace net {
 
 class HttpClient {
 public:
@@ -22,7 +22,8 @@ public:
     void getAsync(const std::string& url, std::function<void(const std::shared_ptr<HttpResponse>&)>);
     void postAsync(const std::string& url, const nlohmann::json& body, std::function<void(const std::shared_ptr<HttpResponse>&)>);
 
-    inline void requestAsync(const std::shared_ptr<HttpRequest>& request, std::function<void(const std::shared_ptr<HttpResponse>&)> cb) {
+    inline void requestAsync(const std::shared_ptr<HttpRequest>& request, std::function<void(const std::shared_ptr<HttpResponse>&)> cb)
+    {
         m_client->send(request, std::move(cb));
     }
 

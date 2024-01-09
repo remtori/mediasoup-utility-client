@@ -1,6 +1,6 @@
-#include "common/http_client.hpp"
+#include "net/http_client.hpp"
 
-namespace cm {
+namespace net {
 
 HttpClient::HttpClient(std::shared_ptr<hv::AsyncHttpClient> client)
     : m_client(std::move(client))

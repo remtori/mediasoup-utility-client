@@ -1,7 +1,8 @@
 #pragma once
 
-#include <common/http_client.hpp>
 #include <msc/msc.hpp>
+#include <net/http_client.hpp>
+
 
 #include "consumer.hpp"
 
@@ -53,7 +54,7 @@ private:
     void on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept override;
 
 private:
-    cm::HttpClient m_client;
+    net::HttpClient m_client;
     std::shared_ptr<msc::PeerConnectionFactoryTuple> m_peer_connection_factory;
     std::shared_ptr<ReportVideoConsumer> m_screen_consumer;
 

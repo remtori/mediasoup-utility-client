@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(msc LANGUAGES CXX)
+project(libmsc LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,7 +24,6 @@ target_include_directories(${PROJECT_NAME} SYSTEM
 PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}/include
 PRIVATE
-	${CMAKE_SOURCE_DIR}/common/include
     ${CMAKE_SOURCE_DIR}/deps/fmt/include
     ${CMAKE_SOURCE_DIR}/deps/libmediasoupclient/include
     ${CMAKE_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include
@@ -35,7 +34,7 @@ PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-	common
+	libcommon
     mediasoupclient
 	$<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 	$<$<PLATFORM_ID:Windows>:secur32.lib>

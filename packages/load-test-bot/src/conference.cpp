@@ -9,7 +9,7 @@ static const std::string HTTP_ENDPOINT = USE_LIVE_SERVER ? "https://portal-voice
 ConferencePeer::ConferencePeer(
     std::shared_ptr<cm::Executor> executor,
     hv::EventLoopPtr event_loop,
-    std::shared_ptr<cm::HttpClient> http_client,
+    std::shared_ptr<net::HttpClient> http_client,
     std::shared_ptr<msc::PeerConnectionFactoryTuple> peer_connection_factory)
     : m_executor(std::move(executor))
     , m_event_loop(event_loop)
@@ -18,12 +18,12 @@ ConferencePeer::ConferencePeer(
     , m_peer_connection_factory(std::move(peer_connection_factory))
 {
     m_device = msc::Device::create(this, m_peer_connection_factory);
-    m_protoo.on_notify = [this](cm::ProtooNotify req) {
+    m_protoo.on_notify = [this](net::ProtooNotify req) {
         m_executor->push_task([this, req = std::move(req)]() {
             on_protoo_notify(std::move(req));
         });
     };
-    m_protoo.on_request = [this](cm::ProtooRequest req) {
+    m_protoo.on_request = [this](net::ProtooRequest req) {
         m_executor->push_task([this, req = std::move(req)]() {
             on_protoo_request(std::move(req));
         });
@@ -187,7 +187,7 @@ void ConferencePeer::start_consuming(nlohmann::json consumer_infos)
     m_state.peer_count = m_peers.size();
 }
 
-void ConferencePeer::on_protoo_notify(cm::ProtooNotify req)
+void ConferencePeer::on_protoo_notify(net::ProtooNotify req)
 {
     if (req.method == "kick") {
 
@@ -197,7 +197,7 @@ void ConferencePeer::on_protoo_notify(cm::ProtooNotify req)
     }
 }
 
-void ConferencePeer::on_protoo_request(cm::ProtooRequest req)
+void ConferencePeer::on_protoo_request(net::ProtooRequest req)
 {
     if (req.method == "newConsumer") {
         start_consuming(nlohmann::json::array({

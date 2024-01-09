@@ -16,7 +16,7 @@ public:
 
 private:
     std::string m_device_id;
-    std::shared_ptr<cm::HttpClient> m_http_client;
+    std::shared_ptr<net::HttpClient> m_http_client;
     std::vector<hv::EventLoopPtr> m_event_loops {};
     std::vector<std::shared_ptr<cm::Executor>> m_executors {};
     std::vector<std::shared_ptr<msc::PeerConnectionFactoryTuple>> m_peer_connection_factories {};

@@ -1,8 +1,9 @@
 {
     "env": {
         "commonIncludePath": [
-            "${workspaceFolder}/msc/include",
-            "${workspaceFolder}/common/include",
+            "${workspaceFolder}/packages/libcommon/include",
+            "${workspaceFolder}/packages/libnetwork/include",
+            "${workspaceFolder}/packages/libmsc/include",
             "${workspaceFolder}/deps/argparse/include",
             "${workspaceFolder}/deps/fmt/include",
             "${workspaceFolder}/deps/libhv/include",

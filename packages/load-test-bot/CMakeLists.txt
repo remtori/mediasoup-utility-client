@@ -41,8 +41,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    msc
-	common
+	libcommon
+	libnet
+    libmsc
 	argparse
 	ftxui::screen
 	ftxui::dom

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <common/http_client.hpp>
+#include <net/http_client.hpp>
 
 #include "viewer.hpp"
 
@@ -32,6 +32,7 @@ public:
 
     std::unordered_map<ViewerState, int> state_stats();
     VideoStats video_stats();
+
 private:
     std::unique_ptr<cm::Executor> m_executor;
     std::vector<std::shared_ptr<hv::AsyncHttpClient>> m_http_clients {};
