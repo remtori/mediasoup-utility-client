@@ -160,7 +160,7 @@ void setup_conference_bot_ui(std::shared_ptr<ConferenceManager> manager, size_t 
 
     auto gauge = [&](std::string label, int count) {
         return ftxui::hbox({ ftxui::text(std::move(label)),
-            ftxui::gauge(float(count) / float(room_count * user_count)),
+            ftxui::gauge(float(count) / float(manager->total_user_count())),
             ftxui::text(fmt::format(" {}", count)) });
     };
 
@@ -170,7 +170,7 @@ void setup_conference_bot_ui(std::shared_ptr<ConferenceManager> manager, size_t 
 
         for (const auto& [num, count] : map) {
             auto line = ftxui::hbox({ ftxui::text(fmt::format("consume {:02} peer ", num)),
-                ftxui::gauge(float(count) / float(room_count * user_count)),
+                ftxui::gauge(float(count) / float(manager->total_user_count())),
                 ftxui::text(fmt::format(" {}", count)) });
 
             children.push_back(std::move(line));

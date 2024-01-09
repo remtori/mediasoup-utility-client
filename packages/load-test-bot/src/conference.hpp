@@ -54,6 +54,7 @@ private:
     std::shared_ptr<msc::DataSender> m_self_data_sender {};
     std::shared_ptr<msc::AudioSender> m_self_audio_sender {};
     std::unordered_map<std::string, Peer> m_peers {};
+    bool m_validate_data_channel { true };
 
 public:
     ConferencePeer(std::shared_ptr<cm::Executor>, hv::EventLoopPtr, std::shared_ptr<net::HttpClient>, std::shared_ptr<msc::PeerConnectionFactoryTuple>);
@@ -62,6 +63,7 @@ public:
     void joinRoom(std::string user_id, std::string room_id);
     void leave(bool blocking = false);
 
+    void validate_data_channel(bool validate) { m_validate_data_channel = validate; }
     void tick_producer();
 
     float avg_frame_rate();

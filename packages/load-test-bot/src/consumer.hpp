@@ -78,6 +78,11 @@ struct DataStat {
 
 class ReportDataConsumer : public msc::DataConsumer {
 public:
+    ReportDataConsumer(bool validate_data)
+        : m_validate_data(validate_data)
+    {
+    }
+
     DataStat data_stat()
     {
         int64_t now = msc::rtc_timestamp_ms();
@@ -100,18 +105,19 @@ private:
             return;
         }
 
-        uint32_t checksum = 0;
-        std::memcpy(&checksum, data.data(), sizeof(checksum));
+        if (m_validate_data) {
+            uint32_t checksum = 0;
+            std::memcpy(&checksum, data.data(), sizeof(checksum));
 
-        cm::CRC32 crc32;
-        crc32.update(data.subspan(4));
-        if (crc32.digest() != checksum) {
-            fmt::println("[DataConsumer] recv invalid data (checksum failed)");
-            return;
+            cm::CRC32 crc32;
+            crc32.update(data.subspan(4));
+            if (crc32.digest() != checksum) {
+                fmt::println("[DataConsumer] recv invalid data (checksum failed)");
+                return;
+            }
         }
 
         int64_t now = msc::rtc_timestamp_ms();
-
         m_frame_count++;
         if (m_time_last_report == 0)
             m_time_last_report = now;
@@ -122,6 +128,6 @@ private:
 private:
     int64_t m_time_last_report { 0 };
     int64_t m_time_last_frame { 0 };
-
     int m_frame_count { 0 };
+    bool m_validate_data;
 };

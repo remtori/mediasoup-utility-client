@@ -28,12 +28,19 @@ private:
 
     hv::TimerID m_tick_producer_timer {};
     Stats m_stats {};
+    bool m_validate_data_channel { false };
 
 public:
     ConferenceManager(size_t num_worker_thread, size_t num_network_thread, size_t num_peer_connection_factory);
     ~ConferenceManager();
 
+    void validate_data_channel(bool validate) { m_validate_data_channel = validate; }
     void apply_config(size_t room_count, size_t user_per_room, size_t starting_room_id = 0);
+
+    size_t total_user_count() const
+    {
+        return m_room_count * m_user_per_room;
+    }
 
     const Stats& stats();
 

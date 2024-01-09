@@ -69,6 +69,10 @@ int main(int argc, const char** argv)
         .scan<'u', size_t>()
         .metavar("UINT")
         .default_value(size_t(0));
+    conference_bot.add_argument("-d", "--no-validate")
+        .help("Disable data channel validation")
+        .default_value(true)
+        .implicit_value(false);
 
     program.add_subparser(livestream_view_bot);
     program.add_subparser(conference_bot);
@@ -97,9 +101,10 @@ int main(int argc, const char** argv)
 
     try {
         if (program.is_subcommand_used("livestream")) {
+            cm::log("Running livestream bot with \n{} network_thread(s)\n{} worker_thread(s)\n{} peer_connection_factory(ies)\n", config.num_network_thread, config.num_worker_thread, config.num_peer_connection_factory);
             run_livestream_view_bot(livestream_view_bot, config);
         } else if (program.is_subcommand_used("conference")) {
-            fmt::println("Running conference bot with \n{} network_thread(s)\n{} worker_thread(s)\n{} peer_connection_factory(ies)\n", config.num_network_thread, config.num_worker_thread, config.num_peer_connection_factory);
+            cm::log("Running conference bot with \n{} network_thread(s)\n{} worker_thread(s)\n{} peer_connection_factory(ies)\n", config.num_network_thread, config.num_worker_thread, config.num_peer_connection_factory);
             run_conference_bot(conference_bot, config);
         } else {
             std::cout << program;
@@ -157,8 +162,10 @@ void run_conference_bot(const argparse::ArgumentParser& program, CommonConfig co
     size_t room_count = program.get<size_t>("--room-count");
     size_t user_count = program.get<size_t>("--user-per-room");
     size_t room_id = program.get<size_t>("--rid");
+    bool validate_data_channel = program.get<bool>("--no-validate");
 
     std::shared_ptr<ConferenceManager> manager = std::make_shared<ConferenceManager>(config.num_worker_thread, config.num_network_thread, config.num_peer_connection_factory);
+    manager->validate_data_channel(validate_data_channel);
 
     if (config.use_gui) {
         setup_conference_bot_ui(manager, room_count, user_count, room_id);

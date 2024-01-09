@@ -27,7 +27,7 @@ ConferenceManager::ConferenceManager(size_t num_worker_thread, size_t num_networ
         m_peer_connection_factories.push_back(msc::create_peer_connection_factory());
     }
 
-    m_tick_producer_timer = timer_event_loop().setInterval(60, [this](auto) {
+    m_tick_producer_timer = timer_event_loop().setInterval(50, [this](auto) {
         this->tick_producer();
     });
 }
@@ -72,7 +72,8 @@ void ConferenceManager::apply_config(size_t room_count, size_t user_per_room, si
             auto& conference = m_peers[i * m_user_per_room + j];
 
             uint32_t user_id = s_starting_user_id++;
-            conference->joinRoom(m_device_id + "_u" + std::to_string(10000 + user_id), "ltb_r" + std::to_string(starting_room_id + i));
+            conference->validate_data_channel(m_validate_data_channel);
+            conference->joinRoom(m_device_id + "_u" + std::to_string(10000 + user_id), m_device_id + "_r" + std::to_string(starting_room_id + i));
         }
     }
 }

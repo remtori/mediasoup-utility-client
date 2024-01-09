@@ -2,9 +2,9 @@
 
 #include "timer_event_loop.hpp"
 
-static constexpr bool USE_LIVE_SERVER = false;
-static const std::string WS_ENDPOINT = USE_LIVE_SERVER ? "ws://portal-voicevideo.service.zingplay.com:12009" : "ws://portal-mediasoup-dev.service.zingplay.com:11905";
-static const std::string HTTP_ENDPOINT = USE_LIVE_SERVER ? "https://portal-voicevideo.service.zingplay.com" : "http://portal-mediasoup-dev.service.zingplay.com:11905";
+static constexpr bool USE_LIVE_SERVER = true;
+static const std::string WS_ENDPOINT = USE_LIVE_SERVER ? "ws://45.127.252.204:12009" : "ws://portal-mediasoup-dev.service.zingplay.com:11905";
+static const std::string HTTP_ENDPOINT = USE_LIVE_SERVER ? "http://45.127.252.204:12009" : "http://portal-mediasoup-dev.service.zingplay.com:11905";
 
 ConferencePeer::ConferencePeer(
     std::shared_ptr<cm::Executor> executor,
@@ -121,11 +121,12 @@ void ConferencePeer::tick_producer()
 
     if (m_self_data_sender && m_self_data_sender->buffered_amount() == 0) {
         std::span data(m_buffer.begin(), 300);
-
-        cm::CRC32 crc32;
-        crc32.update(data.subspan(4));
-        uint32_t checksum = crc32.digest();
-        std::memcpy(data.data(), &checksum, sizeof(checksum));
+        if (m_validate_data_channel) {
+            cm::CRC32 crc32;
+            crc32.update(data.subspan(4));
+            uint32_t checksum = crc32.digest();
+            std::memcpy(data.data(), &checksum, sizeof(checksum));
+        }
 
         m_self_data_sender->send_data(data);
     }
@@ -159,7 +160,7 @@ void ConferencePeer::start_consuming(nlohmann::json consumer_infos)
 
             cm::log("[Conference][{}] start consuming data from {}: consumer_id={} producer_id={} stream_id={} label={}", m_user_id, peer_id, consumer_id, producer_id, stream_id, label);
             if (!peer.data_consumer) {
-                peer.data_consumer = std::make_shared<ReportDataConsumer>();
+                peer.data_consumer = std::make_shared<ReportDataConsumer>(m_validate_data_channel);
             }
 
             m_device->create_data_sink(consumer_id, producer_id, stream_id, label, protocol, peer.data_consumer);
