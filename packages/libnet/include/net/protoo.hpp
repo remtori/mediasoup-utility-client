@@ -1,5 +1,6 @@
 #pragma once
 
+#include <common/json.hpp>
 #include <hv/WebSocketClient.h>
 
 #include <functional>
@@ -7,8 +8,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <common/json.hpp>
 
 namespace net {
 
