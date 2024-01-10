@@ -10,8 +10,8 @@ public:
         std::unordered_map<ConferenceStatus, uint32_t> status {};
         std::unordered_map<size_t, uint32_t> consume_peer {};
         size_t productive_peer { 0 };
-        float avg_peer_count { 0 };
-        float avg_frame_rate { 0 };
+        float avg_send_frame_rate { 0 };
+        float avg_recv_frame_rate { 0 };
     };
 
 private:
@@ -27,6 +27,7 @@ private:
     size_t m_user_per_room { 4 };
 
     hv::TimerID m_tick_producer_timer {};
+    int64_t m_time_last_report { 0 };
     Stats m_stats {};
     bool m_validate_data_channel { false };
 

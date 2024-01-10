@@ -112,36 +112,46 @@ float ConferencePeer::avg_frame_rate()
     return sum_frame_rate / m_peers.size();
 }
 
+ConferenceState ConferencePeer::state()
+{
+    ConferenceState ret = m_state;
+    m_state.data_producer_tick_count = 0;
+    return ret;
+}
+
 void ConferencePeer::tick_producer()
 {
-    {
-        m_buffer.resize(1760);
-        std::generate(m_buffer.begin(), m_buffer.end(), []() { return std::rand() % 256; });
-    }
-
-    if (m_self_data_sender && m_self_data_sender->buffered_amount() == 0) {
-        std::span data(m_buffer.begin(), 300);
-        if (m_validate_data_channel) {
-            cm::CRC32 crc32;
-            crc32.update(data.subspan(4));
-            uint32_t checksum = crc32.digest();
-            std::memcpy(data.data(), &checksum, sizeof(checksum));
+    m_executor->push_task([this]() {
+        {
+            m_buffer.resize(1760);
+            std::generate(m_buffer.begin(), m_buffer.end(), []() { return std::rand() % 256; });
         }
 
-        m_self_data_sender->send_data(data);
-    }
+        if (m_self_data_sender && m_self_data_sender->buffered_amount() == 0) {
+            std::span data(m_buffer.begin(), 300);
+            if (m_validate_data_channel) {
+                cm::CRC32 crc32;
+                crc32.update(data.subspan(4));
+                uint32_t checksum = crc32.digest();
+                std::memcpy(data.data(), &checksum, sizeof(checksum));
+            }
 
-    // this will be called every 10ms, so sending 440 frames every 10ms will be 44000Hz
-    if (m_self_audio_sender) {
-        msc::MutableAudioData audio_data;
-        audio_data.timestamp_ms = msc::rtc_timestamp_ms();
-        audio_data.bits_per_sample = 16;
-        audio_data.sample_rate = 44000;
-        audio_data.number_of_channels = 2;
-        audio_data.number_of_frames = 440;
-        audio_data.data = m_buffer.data();
-        m_self_audio_sender->send_audio_data(audio_data);
-    }
+            m_state.data_producer_tick_count++;
+            m_self_data_sender->send_data(data);
+        }
+
+        // this will be called every 10ms, so sending 440 frames every 10ms will be 44000Hz
+        if (m_self_audio_sender) {
+            msc::MutableAudioData audio_data;
+            audio_data.timestamp_ms = msc::rtc_timestamp_ms();
+            audio_data.bits_per_sample = 16;
+            audio_data.sample_rate = 44000;
+            audio_data.number_of_channels = 2;
+            audio_data.number_of_frames = 440;
+            audio_data.data = m_buffer.data();
+            m_self_audio_sender->send_audio_data(audio_data);
+        }
+    });
 }
 
 void ConferencePeer::start_consuming(nlohmann::json consumer_infos)

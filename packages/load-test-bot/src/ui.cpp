@@ -224,8 +224,8 @@ void setup_conference_bot_ui(std::shared_ptr<ConferenceManager> manager, size_t 
                                }) | ftxui::flex,
                                ftxui::separator(),
                                ftxui::vbox({
-                                   ftxui::text(fmt::format("Average FPS       : {:8.4f}", stats.avg_frame_rate)) | ftxui::bold,
-                                   ftxui::text(fmt::format("Average peer count: {:8.4f}", stats.avg_peer_count)) | ftxui::bold,
+                                   ftxui::text(fmt::format("Average send FPS: {:8.4f}", stats.avg_send_frame_rate)) | ftxui::bold,
+                                   ftxui::text(fmt::format("Average recv FPS: {:8.4f}", stats.avg_recv_frame_rate)) | ftxui::bold,
                                    ftxui::text("=== Peer Statistics ===") | ftxui::bold,
                                    gauge("productive peer ", stats.productive_peer),
                                    consumer_count_gauge(stats.consume_peer),

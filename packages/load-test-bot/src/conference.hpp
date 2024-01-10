@@ -24,6 +24,7 @@ enum class ConferenceStatus {
 struct ConferenceState {
     ConferenceStatus status { ConferenceStatus::Idle };
     uint32_t peer_count { 0 };
+    uint32_t data_producer_tick_count { 0 };
     bool produce_success { false };
 };
 
@@ -67,7 +68,8 @@ public:
     void tick_producer();
 
     float avg_frame_rate();
-    ConferenceState state() const { return m_state; }
+
+    ConferenceState state();
 
 private:
     void on_protoo_notify(net::ProtooNotify);

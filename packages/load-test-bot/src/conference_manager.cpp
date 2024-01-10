@@ -91,8 +91,8 @@ const ConferenceManager::Stats& ConferenceManager::stats()
     m_stats.status.clear();
     m_stats.consume_peer.clear();
     m_stats.productive_peer = 0;
-    m_stats.avg_peer_count = 0;
-    m_stats.avg_frame_rate = 0;
+    m_stats.avg_recv_frame_rate = 0;
+    m_stats.avg_send_frame_rate = 0;
 
     for (size_t i = 0; i < m_user_per_room; i++) {
         m_stats.consume_peer[i] = 0;
@@ -101,15 +101,18 @@ const ConferenceManager::Stats& ConferenceManager::stats()
     std::lock_guard lk(m_mutex);
     for (auto& conference : m_peers) {
         auto state = conference->state();
-        m_stats.avg_frame_rate += conference->avg_frame_rate();
-        m_stats.avg_peer_count += state.peer_count;
+        m_stats.avg_recv_frame_rate += conference->avg_frame_rate();
+        m_stats.avg_send_frame_rate += state.data_producer_tick_count;
         m_stats.productive_peer += state.produce_success;
         m_stats.status[state.status]++;
         m_stats.consume_peer[state.peer_count]++;
     }
 
-    m_stats.avg_frame_rate /= m_peers.size();
-    m_stats.avg_peer_count /= m_peers.size();
+    int64_t now = msc::rtc_timestamp_ms();
+
+    m_stats.avg_recv_frame_rate /= m_peers.size();
+    m_stats.avg_send_frame_rate = (m_stats.avg_send_frame_rate / m_peers.size()) / float(now - m_time_last_report) * 1000.0f;
+    m_time_last_report = now;
 
     return m_stats;
 }
