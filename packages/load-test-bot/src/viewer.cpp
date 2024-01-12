@@ -77,21 +77,24 @@ void Viewer::watch(std::string streamer_id)
             if (type == "screen") {
                 m_screen_consumer->reset();
 
-                m_device->create_video_sink(
-                    consumer.at("consumerId").get<std::string>(),
-                    consumer.at("producerId").get<std::string>(),
-                    consumer.at("rtpParameters"),
+                m_device->create_video_sink(msc::ConsumerOptions {
+                                                .consumer_id = consumer.at("consumerId").get<std::string>(),
+                                                .producer_id = consumer.at("producerId").get<std::string>(),
+                                                .rtp_parameters = consumer.at("rtpParameters"),
+                                            },
                     m_screen_consumer);
             } else if (type == "audio") {
-                m_device->create_audio_sink(
-                    consumer.at("consumerId").get<std::string>(),
-                    consumer.at("producerId").get<std::string>(),
-                    consumer.at("rtpParameters"));
+                m_device->create_audio_sink(msc::ConsumerOptions {
+                    .consumer_id = consumer.at("consumerId").get<std::string>(),
+                    .producer_id = consumer.at("producerId").get<std::string>(),
+                    .rtp_parameters = consumer.at("rtpParameters"),
+                });
             } else {
-                m_device->create_video_sink(
-                    consumer.at("consumerId").get<std::string>(),
-                    consumer.at("producerId").get<std::string>(),
-                    consumer.at("rtpParameters"));
+                m_device->create_video_sink(msc::ConsumerOptions {
+                    .consumer_id = consumer.at("consumerId").get<std::string>(),
+                    .producer_id = consumer.at("producerId").get<std::string>(),
+                    .rtp_parameters = consumer.at("rtpParameters"),
+                });
             }
         }
 

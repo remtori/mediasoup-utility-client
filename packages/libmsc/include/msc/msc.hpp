@@ -58,10 +58,26 @@ public:
     virtual std::future<CreateTransportOptions> create_server_side_transport(TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept = 0;
     virtual std::future<void> connect_transport(TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept = 0;
 
-    virtual std::future<std::string> connect_producer(const std::string& transport_id, MediaKind kind, const nlohmann::json& rtp_parameters) noexcept = 0;
-    virtual std::future<std::string> connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept = 0;
+    virtual std::future<std::string> connect_producer(const std::string& transport_id, MediaKind kind, const nlohmann::json& rtp_parameters) noexcept
+    {
+        std::promise<std::string> ret;
+        ret.set_exception(std::make_exception_ptr(std::runtime_error("not implemented")));
+        return ret.get_future();
+    }
 
-    virtual void on_connection_state_change(TransportKind kind, const std::string& transport_id, const std::string& connection_state) noexcept = 0;
+    virtual std::future<std::string> connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept
+    {
+        std::promise<std::string> ret;
+        ret.set_exception(std::make_exception_ptr(std::runtime_error("not implemented")));
+        return ret.get_future();
+    }
+
+    virtual void on_connection_state_change(TransportKind kind, const std::string& transport_id, const std::string& connection_state) noexcept
+    {
+        (void)kind;
+        (void)transport_id;
+        (void)connection_state;
+    }
 };
 
 struct EXPORT VideoFrame {
@@ -183,12 +199,24 @@ public:
     virtual void send_data(std::span<const uint8_t>) = 0;
 };
 
+struct EXPORT ConsumerOptions {
+    const std::string& consumer_id;
+    const std::string& producer_id;
+    const nlohmann::json& rtp_parameters;
+};
+
+struct EXPORT ProducerOptions {
+    const nlohmann::json& encodings;
+    const nlohmann::json& codecOptions;
+    const nlohmann::json& codec;
+};
+
 class EXPORT Device {
 protected:
     Device() {};
 
 public:
-    static std::shared_ptr<Device> create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple = nullptr) noexcept;
+    static std::unique_ptr<Device> create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple = nullptr) noexcept;
 
     virtual ~Device() {};
 
@@ -201,15 +229,11 @@ public:
     virtual void ensure_transport(TransportKind kind) noexcept = 0;
 
     virtual void create_video_sink(
-        const std::string& consumer_id,
-        const std::string& producer_id,
-        const nlohmann::json& rtp_parameters,
+        const ConsumerOptions&,
         std::shared_ptr<VideoConsumer> consumer = nullptr) noexcept
         = 0;
     virtual void create_audio_sink(
-        const std::string& consumer_id,
-        const std::string& producer_id,
-        const nlohmann::json& rtp_parameters,
+        const ConsumerOptions&,
         std::shared_ptr<AudioConsumer> consumer = nullptr) noexcept
         = 0;
     virtual void create_data_sink(
@@ -225,17 +249,8 @@ public:
     virtual void close_audio_sink(const std::shared_ptr<AudioConsumer>&) noexcept = 0;
     virtual void close_data_sink(const std::shared_ptr<DataConsumer>&) noexcept = 0;
 
-    virtual std::shared_ptr<VideoSender> create_video_source(
-        const nlohmann::json& encodings,
-        const nlohmann::json& codecOptions,
-        const nlohmann::json& codec) noexcept
-        = 0;
-
-    virtual std::shared_ptr<AudioSender> create_audio_source(
-        const nlohmann::json& encodings,
-        const nlohmann::json& codecOptions,
-        const nlohmann::json& codec) noexcept
-        = 0;
+    virtual std::shared_ptr<VideoSender> create_video_source(const ProducerOptions&) noexcept = 0;
+    virtual std::shared_ptr<AudioSender> create_audio_source(const ProducerOptions&) noexcept = 0;
 
     virtual std::shared_ptr<DataSender> create_data_source(
         const std::string& label,
@@ -244,6 +259,8 @@ public:
         int maxRetransmits,
         int maxPacketLifeTime) noexcept
         = 0;
+
+    virtual std::shared_ptr<void> re_encode(MediaKind, const ConsumerOptions&, const ProducerOptions&) noexcept = 0;
 };
 
 }

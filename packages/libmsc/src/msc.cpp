@@ -93,21 +93,19 @@ public:
 
     void ensure_transport(TransportKind kind) noexcept override;
 
-    void create_video_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> consumer) noexcept override;
-    void create_audio_sink(const std::string& id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> consumer) noexcept override;
+    void create_video_sink(const ConsumerOptions&, std::shared_ptr<VideoConsumer> consumer) noexcept override;
+    void create_audio_sink(const ConsumerOptions&, std::shared_ptr<AudioConsumer> consumer) noexcept override;
     void create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer>) noexcept override;
 
     void close_video_sink(const std::shared_ptr<VideoConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
     void close_audio_sink(const std::shared_ptr<AudioConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
     void close_data_sink(const std::shared_ptr<DataConsumer>&) noexcept override;
 
-    std::shared_ptr<VideoSender> create_video_source(const nlohmann::json& encodings,
-        const nlohmann::json& codecOptions,
-        const nlohmann::json& codec) noexcept override;
-    std::shared_ptr<AudioSender> create_audio_source(const nlohmann::json& encodings,
-        const nlohmann::json& codecOptions,
-        const nlohmann::json& codec) noexcept override;
+    std::shared_ptr<VideoSender> create_video_source(const ProducerOptions&) noexcept override;
+    std::shared_ptr<AudioSender> create_audio_source(const ProducerOptions&) noexcept override;
     std::shared_ptr<DataSender> create_data_source(const std::string& label, const std::string& protocol, bool ordered, int maxRetransmits, int maxPacketLifeTime) noexcept override;
+
+    std::shared_ptr<void> re_encode(MediaKind, const ConsumerOptions&, const ProducerOptions&) noexcept override;
 
 private:
     void close_sink(const void* consumer) noexcept;
@@ -212,32 +210,32 @@ void DeviceImpl::ensure_transport(TransportKind kind) noexcept
     }
 }
 
-void DeviceImpl::create_video_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<VideoConsumer> user_consumer) noexcept
+void DeviceImpl::create_video_sink(const ConsumerOptions& options, std::shared_ptr<VideoConsumer> user_consumer) noexcept
 {
     ensure_transport(TransportKind::Recv);
 
     auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
         m_recv_transport->Consume(
             this,
-            consumer_id,
-            producer_id,
+            options.consumer_id,
+            options.producer_id,
             kVideo,
-            rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&rtp_parameters)));
+            options.rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&options.rtp_parameters)));
 
     m_sinks.emplace_back(std::make_unique<VideoSinkImpl>(std::move(consumer), std::move(user_consumer)));
 }
 
-void DeviceImpl::create_audio_sink(const std::string& consumer_id, const std::string& producer_id, const nlohmann::json& rtp_parameters, std::shared_ptr<AudioConsumer> user_consumer) noexcept
+void DeviceImpl::create_audio_sink(const ConsumerOptions& options, std::shared_ptr<AudioConsumer> user_consumer) noexcept
 {
     ensure_transport(TransportKind::Recv);
 
     auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
         m_recv_transport->Consume(
             this,
-            consumer_id,
-            producer_id,
+            options.consumer_id,
+            options.producer_id,
             kAudio,
-            rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&rtp_parameters)));
+            options.rtp_parameters.is_null() ? nullptr : const_cast<nlohmann::json*>(&options.rtp_parameters)));
 
     m_sinks.emplace_back(std::make_unique<AudioSinkImpl>(std::move(consumer), std::move(user_consumer)));
 }
@@ -273,26 +271,20 @@ void DeviceImpl::close_sender(const void* producer) noexcept
     m_senders.erase(producer);
 }
 
-std::shared_ptr<VideoSender> DeviceImpl::create_video_source(const nlohmann::json& encodings,
-    const nlohmann::json& codecOptions,
-    const nlohmann::json& codec) noexcept
+std::shared_ptr<VideoSender> DeviceImpl::create_video_source(const ProducerOptions& options) noexcept
 {
     ensure_transport(TransportKind::Send);
 
     auto* source = new rtc::RefCountedObject<::msc::VideoSenderImpl>(2, false);
     auto track = m_peer_connection_factory->CreateVideoTrack("video_track_X", source);
 
-    (void)encodings;
-    (void)codecOptions;
-    (void)codec;
+    (void)options;
     // m_send_transport->Produce(this, )
 
     return nullptr;
 }
 
-std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const nlohmann::json& encodings,
-    const nlohmann::json& codecOptions,
-    const nlohmann::json& codec) noexcept
+std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const ProducerOptions& options) noexcept
 {
     ensure_transport(TransportKind::Send);
 
@@ -301,16 +293,16 @@ std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const nlohmann::jso
     auto track = m_peer_connection_factory->CreateAudioTrack("audio_track_X", audio_source.get());
 
     std::vector<webrtc::RtpEncodingParameters> rtc_encodings;
-    if (encodings.is_array()) {
-        rtc_encodings = encodings.get<std::vector<webrtc::RtpEncodingParameters>>();
+    if (options.encodings.is_array()) {
+        rtc_encodings = options.encodings.get<std::vector<webrtc::RtpEncodingParameters>>();
     }
 
     auto producer = std::unique_ptr<mediasoupclient::Producer>(m_send_transport->Produce(
         this,
         track.get(),
-        encodings.is_array() ? &rtc_encodings : nullptr,
-        codecOptions.is_object() ? &codecOptions : nullptr,
-        codec.is_object() ? &codec : nullptr,
+        options.encodings.is_array() ? &rtc_encodings : nullptr,
+        options.codecOptions.is_object() ? &options.codecOptions : nullptr,
+        options.codec.is_object() ? &options.codec : nullptr,
         nlohmann::json::object()));
 
     audio_sender->init(std::move(producer), std::move(track));
@@ -372,6 +364,52 @@ std::shared_ptr<DataSender> DeviceImpl::create_data_source(
     return data_sender;
 }
 
+struct ReEncodeContext {
+    std::unique_ptr<mediasoupclient::Consumer> consumer;
+    std::unique_ptr<mediasoupclient::Producer> producer;
+
+    ReEncodeContext(std::unique_ptr<mediasoupclient::Consumer> consumer, std::unique_ptr<mediasoupclient::Producer> producer)
+        : consumer(std::move(consumer))
+        , producer(std::move(producer))
+    {
+    }
+
+    ~ReEncodeContext()
+    {
+        producer->Close();
+        consumer->Close();
+    }
+};
+
+std::shared_ptr<void> DeviceImpl::re_encode(MediaKind kind, const ConsumerOptions& consumer_options, const ProducerOptions& producer_options) noexcept
+{
+    ensure_transport(TransportKind::Recv);
+    ensure_transport(TransportKind::Send);
+
+    auto consumer = std::unique_ptr<mediasoupclient::Consumer>(
+        m_recv_transport->Consume(
+            this,
+            consumer_options.consumer_id,
+            consumer_options.producer_id,
+            kind == MediaKind::Audio ? kAudio : kVideo,
+            const_cast<nlohmann::json*>(&consumer_options.rtp_parameters)));
+
+    std::vector<webrtc::RtpEncodingParameters> rtc_encodings;
+    if (producer_options.encodings.is_array()) {
+        rtc_encodings = producer_options.encodings.get<std::vector<webrtc::RtpEncodingParameters>>();
+    }
+
+    auto producer = std::unique_ptr<mediasoupclient::Producer>(m_send_transport->Produce(
+        this,
+        consumer->GetTrack(),
+        producer_options.encodings.is_array() ? &rtc_encodings : nullptr,
+        producer_options.codecOptions.is_object() ? &producer_options.codecOptions : nullptr,
+        producer_options.codec.is_object() ? &producer_options.codec : nullptr,
+        nlohmann::json::object()));
+
+    return std::make_shared<ReEncodeContext>(std::move(consumer), std::move(producer));
+}
+
 }
 
 void initialize()
@@ -398,14 +436,14 @@ int64_t rtc_timestamp_ms()
     return rtc::TimeMillis();
 }
 
-std::shared_ptr<Device> Device::create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple) noexcept
+std::unique_ptr<Device> Device::create(DeviceDelegate* delegate, std::shared_ptr<PeerConnectionFactoryTuple> peer_connection_factory_tuple) noexcept
 {
     initialize();
 
     if (!peer_connection_factory_tuple)
         peer_connection_factory_tuple = default_peer_connection_factory();
 
-    return std::make_shared<DeviceImpl>(delegate, static_cast<PeerConnectionFactoryTupleImpl*>(peer_connection_factory_tuple.get())->factory());
+    return std::make_unique<DeviceImpl>(delegate, static_cast<PeerConnectionFactoryTupleImpl*>(peer_connection_factory_tuple.get())->factory());
 }
 
 }

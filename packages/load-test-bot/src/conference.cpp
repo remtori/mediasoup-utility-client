@@ -67,13 +67,13 @@ void ConferencePeer::joinRoom(std::string user_id, std::string room_id)
             auto consumer_infos = request("consumeAllExistingProducer", { { "rtpCapabilities", m_device->rtp_capabilities() } });
             start_consuming(consumer_infos);
 
-            m_self_audio_sender = m_device->create_audio_source(
-                nullptr,
-                {
+            m_self_audio_sender = m_device->create_audio_source(msc::ProducerOptions {
+                .encodings = nullptr,
+                .codecOptions = {
                     { "opusStereo", true },
                     { "opusDtx", true },
                 },
-                nullptr);
+                .codec = nullptr });
 
             m_self_data_sender = m_device->create_data_source("virtual-avatar", "", false, 0, 0);
             m_state.produce_success = true;
@@ -184,13 +184,21 @@ void ConferencePeer::start_consuming(nlohmann::json consumer_infos)
                     peer.audio_consumer = std::make_shared<msc::DummyAudioConsumer>();
                 }
 
-                m_device->create_audio_sink(consumer_id, producer_id, rtp_parameters, peer.audio_consumer);
+                m_device->create_audio_sink(msc::ConsumerOptions {
+                                                .consumer_id = consumer_id,
+                                                .producer_id = producer_id,
+                                                .rtp_parameters = rtp_parameters },
+                    peer.audio_consumer);
             } else {
                 if (!peer.video_consumer) {
                     peer.video_consumer = std::make_shared<ReportVideoConsumer>();
                 }
 
-                m_device->create_video_sink(consumer_id, producer_id, rtp_parameters, peer.video_consumer);
+                m_device->create_video_sink(msc::ConsumerOptions {
+                                                .consumer_id = consumer_id,
+                                                .producer_id = producer_id,
+                                                .rtp_parameters = rtp_parameters },
+                    peer.video_consumer);
             }
         }
     }
