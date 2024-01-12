@@ -29,6 +29,8 @@ public:
     {
         if (m_user_consumer)
             dynamic_cast<webrtc::AudioTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
+
+        m_consumer->Close();
     }
 
     void OnData(
@@ -75,6 +77,8 @@ public:
     {
         if (m_user_consumer)
             dynamic_cast<webrtc::VideoTrackInterface*>(m_consumer->GetTrack())->RemoveSink(this);
+
+        m_consumer->Close();
     }
 
     void OnFrame(const webrtc::VideoFrame& frame) override;
@@ -109,6 +113,9 @@ public:
 
     virtual ~DataConsumerImpl()
     {
+        if (m_consumer) {
+            m_consumer->Close();
+        }
     }
 
     bool is_consumer_equal(const mediasoupclient::DataConsumer* consumer)
