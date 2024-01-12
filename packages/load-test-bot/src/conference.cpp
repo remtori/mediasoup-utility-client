@@ -250,7 +250,7 @@ void ConferencePeer::on_protoo_request(net::ProtooRequest req)
     }
 }
 
-std::future<msc::CreateTransportOptions> ConferencePeer::create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept
+msc::CreateTransportOptions ConferencePeer::create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities)
 {
     (void)rtp_capabilities;
     auto info = m_create_transport_option[kind == msc::TransportKind::Send ? "sendTransport" : "recvTransport"];
@@ -262,25 +262,19 @@ std::future<msc::CreateTransportOptions> ConferencePeer::create_server_side_tran
     options.dtls_parameters = info.value("dtlsParameters", nlohmann::json());
     options.sctp_parameters = info.value("sctpParameters", nlohmann::json());
 
-    std::promise<msc::CreateTransportOptions> ret;
-    ret.set_value(options);
-    return ret.get_future();
+    return options;
 }
 
-std::future<void> ConferencePeer::connect_transport(msc::TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept
+void ConferencePeer::connect_transport(msc::TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters)
 {
     (void)transport_id;
     request("connectWebRtcTransport", {
                                           { "isSend", kind == msc::TransportKind::Send },
                                           { "dtlsParameters", dtls_parameters },
                                       });
-
-    std::promise<void> ret;
-    ret.set_value();
-    return ret.get_future();
 }
 
-std::future<std::string> ConferencePeer::connect_producer(const std::string& transport_id, msc::MediaKind kind, const nlohmann::json& rtp_parameters) noexcept
+std::string ConferencePeer::connect_producer(const std::string& transport_id, msc::MediaKind kind, const nlohmann::json& rtp_parameters)
 {
     (void)transport_id;
     auto resp = request("produce", {
@@ -288,12 +282,10 @@ std::future<std::string> ConferencePeer::connect_producer(const std::string& tra
                                        { "rtpParameters", rtp_parameters },
                                    });
 
-    std::promise<std::string> ret;
-    ret.set_value(resp.at("producerId").get<std::string>());
-    return ret.get_future();
+    return resp.at("producerId").get<std::string>();
 }
 
-std::future<std::string> ConferencePeer::connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept
+std::string ConferencePeer::connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol)
 {
     (void)transport_id;
     auto resp = request("produceData", {
@@ -302,9 +294,7 @@ std::future<std::string> ConferencePeer::connect_data_producer(const std::string
                                            { "sctpStreamParameters", sctp_parameters },
                                        });
 
-    std::promise<std::string> ret;
-    ret.set_value(resp.at("producerId").get<std::string>());
-    return ret.get_future();
+    return resp.at("producerId").get<std::string>();
 }
 
 void ConferencePeer::on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept

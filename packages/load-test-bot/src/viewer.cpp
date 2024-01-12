@@ -119,7 +119,7 @@ void Viewer::stop()
     m_device->stop();
 }
 
-std::future<msc::CreateTransportOptions> Viewer::create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept
+msc::CreateTransportOptions Viewer::create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities)
 {
     (void)kind;
     (void)rtp_capabilities;
@@ -131,12 +131,10 @@ std::future<msc::CreateTransportOptions> Viewer::create_server_side_transport(ms
     options.dtls_parameters = m_create_transport_option.value("dtlsParameters", nlohmann::json());
     options.sctp_parameters = m_create_transport_option.value("sctpParameters", nlohmann::json());
 
-    std::promise<msc::CreateTransportOptions> ret;
-    ret.set_value(options);
-    return ret.get_future();
+    return options;
 }
 
-std::future<void> Viewer::connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept
+void Viewer::connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters)
 {
     (void)transport_id;
     nlohmann::json body = {
@@ -144,33 +142,6 @@ std::future<void> Viewer::connect_transport(msc::TransportKind, const std::strin
     };
 
     m_client.post(ENDPOINT + "/live/" + m_streamer_id + "/connectTransport", body).get();
-
-    std::promise<void> ret;
-    ret.set_value();
-    return ret.get_future();
-}
-
-std::future<std::string> Viewer::connect_producer(const std::string& transport_id, msc::MediaKind kind, const nlohmann::json& rtp_parameters) noexcept
-{
-    (void)transport_id;
-    (void)kind;
-    (void)rtp_parameters;
-
-    std::promise<std::string> promise;
-    promise.set_exception(std::make_exception_ptr(std::runtime_error("not implemented")));
-    return promise.get_future();
-}
-
-std::future<std::string> Viewer::connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept
-{
-    (void)transport_id;
-    (void)sctp_parameters;
-    (void)label;
-    (void)protocol;
-
-    std::promise<std::string> promise;
-    promise.set_exception(std::make_exception_ptr(std::runtime_error("not implemented")));
-    return promise.get_future();
 }
 
 void Viewer::on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept

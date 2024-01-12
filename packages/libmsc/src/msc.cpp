@@ -114,22 +114,34 @@ private:
 public:
     std::future<void> OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtls_parameters) override
     {
-        return m_delegate->connect_transport(
+        m_delegate->connect_transport(
             transport == m_send_transport.get() ? TransportKind::Send : TransportKind::Recv,
             transport->GetId(),
             dtls_parameters);
+
+        std::promise<void> ret;
+        ret.set_value();
+        return ret.get_future();
     }
 
     std::future<std::string> OnProduce(mediasoupclient::SendTransport* transport, const std::string& kind, nlohmann::json rtp_parameters, const nlohmann::json& app_data) override
     {
         (void)app_data;
-        return m_delegate->connect_producer(transport->GetId(), kind == kAudio ? MediaKind::Audio : MediaKind::Video, rtp_parameters);
+        std::string producer_id = m_delegate->connect_producer(transport->GetId(), kind == kAudio ? MediaKind::Audio : MediaKind::Video, rtp_parameters);
+
+        std::promise<std::string> ret;
+        ret.set_value(std::move(producer_id));
+        return ret.get_future();
     }
 
     std::future<std::string> OnProduceData(mediasoupclient::SendTransport* transport, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol, const nlohmann::json& app_data) override
     {
         (void)app_data;
-        return m_delegate->connect_data_producer(transport->GetId(), sctp_parameters, label, protocol);
+        std::string producer_id = m_delegate->connect_data_producer(transport->GetId(), sctp_parameters, label, protocol);
+
+        std::promise<std::string> ret;
+        ret.set_value(std::move(producer_id));
+        return ret.get_future();
     }
 
     void OnTransportClose(mediasoupclient::Producer* producer) override { close_sender(producer); }
@@ -179,7 +191,7 @@ void DeviceImpl::ensure_transport(TransportKind kind) noexcept
     if (kind == TransportKind::Recv && m_recv_transport)
         return;
 
-    auto transport_options = m_delegate->create_server_side_transport(kind, this->rtp_capabilities()).get();
+    auto transport_options = m_delegate->create_server_side_transport(kind, this->rtp_capabilities());
 
     mediasoupclient::PeerConnection::Options options;
     options.factory = m_peer_connection_factory.get();

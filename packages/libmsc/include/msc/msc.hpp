@@ -55,21 +55,17 @@ class EXPORT DeviceDelegate {
 public:
     virtual ~DeviceDelegate() { }
 
-    virtual std::future<CreateTransportOptions> create_server_side_transport(TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept = 0;
-    virtual std::future<void> connect_transport(TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept = 0;
+    virtual CreateTransportOptions create_server_side_transport(TransportKind kind, const nlohmann::json& rtp_capabilities) = 0;
+    virtual void connect_transport(TransportKind kind, const std::string& transport_id, const nlohmann::json& dtls_parameters) = 0;
 
-    virtual std::future<std::string> connect_producer(const std::string& transport_id, MediaKind kind, const nlohmann::json& rtp_parameters) noexcept
+    virtual std::string connect_producer(const std::string& transport_id, MediaKind kind, const nlohmann::json& rtp_parameters)
     {
-        std::promise<std::string> ret;
-        ret.set_exception(std::make_exception_ptr(std::runtime_error("not implemented")));
-        return ret.get_future();
+        throw std::exception("not implemented");
     }
 
-    virtual std::future<std::string> connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept
+    virtual std::string connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol)
     {
-        std::promise<std::string> ret;
-        ret.set_exception(std::make_exception_ptr(std::runtime_error("not implemented")));
-        return ret.get_future();
+        throw std::exception("not implemented");
     }
 
     virtual void on_connection_state_change(TransportKind kind, const std::string& transport_id, const std::string& connection_state) noexcept

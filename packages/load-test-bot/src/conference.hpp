@@ -86,11 +86,11 @@ private:
         throw std::runtime_error(resp.error_reason);
     }
 
-    std::future<msc::CreateTransportOptions> create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities) noexcept override;
-    std::future<void> connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters) noexcept override;
+    msc::CreateTransportOptions create_server_side_transport(msc::TransportKind kind, const nlohmann::json& rtp_capabilities) override;
+    void connect_transport(msc::TransportKind, const std::string& transport_id, const nlohmann::json& dtls_parameters) override;
 
-    std::future<std::string> connect_producer(const std::string& transport_id, msc::MediaKind kind, const nlohmann::json& rtp_parameters) noexcept override;
-    std::future<std::string> connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) noexcept override;
+    std::string connect_producer(const std::string& transport_id, msc::MediaKind kind, const nlohmann::json& rtp_parameters) override;
+    std::string connect_data_producer(const std::string& transport_id, const nlohmann::json& sctp_parameters, const std::string& label, const std::string& protocol) override;
 
     void on_connection_state_change(msc::TransportKind, const std::string&, const std::string& connection_state) noexcept override;
 };
