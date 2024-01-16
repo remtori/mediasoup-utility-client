@@ -93,19 +93,19 @@ public:
 
     void ensure_transport(TransportKind kind) noexcept override;
 
-    void create_video_sink(const ConsumerOptions&, std::shared_ptr<VideoConsumer> consumer) noexcept override;
-    void create_audio_sink(const ConsumerOptions&, std::shared_ptr<AudioConsumer> consumer) noexcept override;
-    void create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer>) noexcept override;
+    void create_video_sink(const ConsumerOptions&, std::shared_ptr<VideoConsumer> consumer) override;
+    void create_audio_sink(const ConsumerOptions&, std::shared_ptr<AudioConsumer> consumer) override;
+    void create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer>) override;
 
     void close_video_sink(const std::shared_ptr<VideoConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
     void close_audio_sink(const std::shared_ptr<AudioConsumer>& consumer) noexcept override { close_sink(consumer.get()); }
     void close_data_sink(const std::shared_ptr<DataConsumer>&) noexcept override;
 
-    std::shared_ptr<VideoSender> create_video_source(const ProducerOptions&) noexcept override;
-    std::shared_ptr<AudioSender> create_audio_source(const ProducerOptions&) noexcept override;
-    std::shared_ptr<DataSender> create_data_source(const std::string& label, const std::string& protocol, bool ordered, int maxRetransmits, int maxPacketLifeTime) noexcept override;
+    std::shared_ptr<VideoSender> create_video_source(const ProducerOptions&) override;
+    std::shared_ptr<AudioSender> create_audio_source(const ProducerOptions&) override;
+    std::shared_ptr<DataSender> create_data_source(const std::string& label, const std::string& protocol, bool ordered, int maxRetransmits, int maxPacketLifeTime) override;
 
-    std::shared_ptr<void> re_encode(MediaKind, const ConsumerOptions&, const ProducerOptions&) noexcept override;
+    std::shared_ptr<void> re_encode(MediaKind, const ConsumerOptions&, const ProducerOptions&) override;
 
 private:
     void close_sink(const void* consumer) noexcept;
@@ -222,7 +222,7 @@ void DeviceImpl::ensure_transport(TransportKind kind) noexcept
     }
 }
 
-void DeviceImpl::create_video_sink(const ConsumerOptions& options, std::shared_ptr<VideoConsumer> user_consumer) noexcept
+void DeviceImpl::create_video_sink(const ConsumerOptions& options, std::shared_ptr<VideoConsumer> user_consumer)
 {
     ensure_transport(TransportKind::Recv);
 
@@ -237,7 +237,7 @@ void DeviceImpl::create_video_sink(const ConsumerOptions& options, std::shared_p
     m_sinks.emplace_back(std::make_unique<VideoSinkImpl>(std::move(consumer), std::move(user_consumer)));
 }
 
-void DeviceImpl::create_audio_sink(const ConsumerOptions& options, std::shared_ptr<AudioConsumer> user_consumer) noexcept
+void DeviceImpl::create_audio_sink(const ConsumerOptions& options, std::shared_ptr<AudioConsumer> user_consumer)
 {
     ensure_transport(TransportKind::Recv);
 
@@ -283,7 +283,7 @@ void DeviceImpl::close_sender(const void* producer) noexcept
     m_senders.erase(producer);
 }
 
-std::shared_ptr<VideoSender> DeviceImpl::create_video_source(const ProducerOptions& options) noexcept
+std::shared_ptr<VideoSender> DeviceImpl::create_video_source(const ProducerOptions& options)
 {
     ensure_transport(TransportKind::Send);
 
@@ -296,7 +296,7 @@ std::shared_ptr<VideoSender> DeviceImpl::create_video_source(const ProducerOptio
     return nullptr;
 }
 
-std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const ProducerOptions& options) noexcept
+std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const ProducerOptions& options)
 {
     ensure_transport(TransportKind::Send);
 
@@ -313,7 +313,7 @@ std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const ProducerOptio
         this,
         track.get(),
         options.encodings.is_array() ? &rtc_encodings : nullptr,
-        options.codecOptions.is_object() ? &options.codecOptions : nullptr,
+        options.codec_options.is_object() ? &options.codec_options : nullptr,
         options.codec.is_object() ? &options.codec : nullptr,
         nlohmann::json::object()));
 
@@ -323,7 +323,7 @@ std::shared_ptr<AudioSender> DeviceImpl::create_audio_source(const ProducerOptio
     return audio_sender;
 }
 
-void DeviceImpl::create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer> user_consumer) noexcept
+void DeviceImpl::create_data_sink(const std::string& consumer_id, const std::string& producer_id, uint16_t stream_id, const std::string& label, const std::string& protocol, std::shared_ptr<DataConsumer> user_consumer)
 {
     ensure_transport(TransportKind::Recv);
 
@@ -357,7 +357,7 @@ std::shared_ptr<DataSender> DeviceImpl::create_data_source(
     const std::string& protocol,
     bool ordered,
     int maxRetransmits,
-    int maxPacketLifeTime) noexcept
+    int maxPacketLifeTime)
 {
     ensure_transport(TransportKind::Send);
     auto data_producer = std::unique_ptr<mediasoupclient::DataProducer>(
@@ -393,7 +393,7 @@ struct ReEncodeContext {
     }
 };
 
-std::shared_ptr<void> DeviceImpl::re_encode(MediaKind kind, const ConsumerOptions& consumer_options, const ProducerOptions& producer_options) noexcept
+std::shared_ptr<void> DeviceImpl::re_encode(MediaKind kind, const ConsumerOptions& consumer_options, const ProducerOptions& producer_options)
 {
     ensure_transport(TransportKind::Recv);
     ensure_transport(TransportKind::Send);
@@ -415,7 +415,7 @@ std::shared_ptr<void> DeviceImpl::re_encode(MediaKind kind, const ConsumerOption
         this,
         consumer->GetTrack(),
         producer_options.encodings.is_array() ? &rtc_encodings : nullptr,
-        producer_options.codecOptions.is_object() ? &producer_options.codecOptions : nullptr,
+        producer_options.codec_options.is_object() ? &producer_options.codec_options : nullptr,
         producer_options.codec.is_object() ? &producer_options.codec : nullptr,
         nlohmann::json::object()));
 

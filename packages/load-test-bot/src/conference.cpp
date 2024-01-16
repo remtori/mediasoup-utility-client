@@ -69,7 +69,7 @@ void ConferencePeer::joinRoom(std::string user_id, std::string room_id)
 
             m_self_audio_sender = m_device->create_audio_source(msc::ProducerOptions {
                 .encodings = nullptr,
-                .codecOptions = {
+                .codec_options = {
                     { "opusStereo", true },
                     { "opusDtx", true },
                 },

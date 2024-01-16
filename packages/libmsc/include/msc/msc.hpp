@@ -196,15 +196,15 @@ public:
 };
 
 struct EXPORT ConsumerOptions {
-    const std::string& consumer_id;
-    const std::string& producer_id;
-    const nlohmann::json& rtp_parameters;
+    std::string consumer_id;
+    std::string producer_id;
+    nlohmann::json rtp_parameters;
 };
 
 struct EXPORT ProducerOptions {
-    const nlohmann::json& encodings;
-    const nlohmann::json& codecOptions;
-    const nlohmann::json& codec;
+    nlohmann::json encodings;
+    nlohmann::json codec_options;
+    nlohmann::json codec;
 };
 
 class EXPORT Device {
@@ -226,11 +226,11 @@ public:
 
     virtual void create_video_sink(
         const ConsumerOptions&,
-        std::shared_ptr<VideoConsumer> consumer = nullptr) noexcept
+        std::shared_ptr<VideoConsumer> consumer = nullptr)
         = 0;
     virtual void create_audio_sink(
         const ConsumerOptions&,
-        std::shared_ptr<AudioConsumer> consumer = nullptr) noexcept
+        std::shared_ptr<AudioConsumer> consumer = nullptr)
         = 0;
     virtual void create_data_sink(
         const std::string& consumer_id,
@@ -238,25 +238,25 @@ public:
         uint16_t stream_id,
         const std::string& label,
         const std::string& protocol,
-        std::shared_ptr<DataConsumer> = nullptr) noexcept
+        std::shared_ptr<DataConsumer> = nullptr)
         = 0;
 
     virtual void close_video_sink(const std::shared_ptr<VideoConsumer>&) noexcept = 0;
     virtual void close_audio_sink(const std::shared_ptr<AudioConsumer>&) noexcept = 0;
     virtual void close_data_sink(const std::shared_ptr<DataConsumer>&) noexcept = 0;
 
-    virtual std::shared_ptr<VideoSender> create_video_source(const ProducerOptions&) noexcept = 0;
-    virtual std::shared_ptr<AudioSender> create_audio_source(const ProducerOptions&) noexcept = 0;
+    virtual std::shared_ptr<VideoSender> create_video_source(const ProducerOptions&) = 0;
+    virtual std::shared_ptr<AudioSender> create_audio_source(const ProducerOptions&) = 0;
 
     virtual std::shared_ptr<DataSender> create_data_source(
         const std::string& label,
         const std::string& protocol,
         bool ordered,
         int maxRetransmits,
-        int maxPacketLifeTime) noexcept
+        int maxPacketLifeTime)
         = 0;
 
-    virtual std::shared_ptr<void> re_encode(MediaKind, const ConsumerOptions&, const ProducerOptions&) noexcept = 0;
+    virtual std::shared_ptr<void> re_encode(MediaKind, const ConsumerOptions&, const ProducerOptions&) = 0;
 };
 
 }
